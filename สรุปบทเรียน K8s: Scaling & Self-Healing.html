@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>สรุปบทเรียน K8s: Scaling & Self-Healing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+          font-family: 'Inter', sans-serif;
+          background-color: #111827;
+          color: #e5e7eb;
+      }
+      .gradient-bg {
+          background: radial-gradient(circle, rgba(37,99,235,0.2) 0%, rgba(17,24,39,0) 50%);
+      }
+      .card {
+          background-color: #1f2937;
+          border: 1px solid #374151;
+          border-radius: 0.75rem;
+          transition: all 0.3s ease;
+      }
+      .code-block {
+          background-color: #0d1117;
+          border: 1px solid #30363d;
+          border-radius: 0.5rem;
+          font-family: 'Courier New', Courier, monospace;
+          white-space: pre-wrap;
+          position: relative;
+      }
+      .copy-btn {
+          position: absolute;
+          top: 0.5rem;
+          right: 0.5rem;
+          background-color: #374151;
+          color: #9ca3af;
+          border: none;
+          padding: 0.25rem 0.5rem;
+          border-radius: 0.25rem;
+          cursor: pointer;
+          opacity: 0.5;
+          transition: opacity 0.2s ease;
+      }
+      .code-block:hover .copy-btn {
+          opacity: 1;
+      }
+      .pod {
+          width: 60px;
+          height: 60px;
+          background-color: #2563eb;
+          border-radius: 0.5rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 600;
+          font-size: 0.75rem;
+          color: white;
+          transition: all 0.5s ease;
+          transform-origin: bottom;
+          border: 2px solid #3b82f6;
+      }
+      .pod.creating {
+          transform: scale(0);
+          animation: pop-in 0.5s forwards;
+      }
+      .pod.terminating {
+          animation: pop-out 0.5s forwards;
+      }
+      .pod.crashed {
+          background-color: #dc2626;
+          border-color: #ef4444;
+          animation: shake 0.5s;
+      }
+      @keyframes pop-in {
+          0% { transform: scale(0); opacity: 0; }
+          100% { transform: scale(1); opacity: 1; }
+      }
+      @keyframes pop-out {
+          0% { transform: scale(1); opacity: 1; }
+          100% { transform: scale(0); opacity: 0; }
+      }
+      @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-5px); }
+          50% { transform: translateX(5px); }
+          75% { transform: translateX(-5px); }
+      }
+    </style>
+  </head>
+  <body class="p-4 sm:p-8 gradient-bg">
+    <div class="max-w-5xl mx-auto">
+      <header class="text-center mb-12">
+        <h1 class="text-4xl sm:text-5xl font-bold text-white mb-2">
+          บทเรียนที่ 1: ความมหัศจรรย์ของ Kubernetes
+        </h1>
+        <p class="text-lg text-blue-400">Scaling & Self-Healing</p>
+      </header>
+
+      <!-- Scaling Section -->
+      <div class="card p-6 mb-8">
+        <h2 class="text-2xl font-bold text-white mb-4">
+          ส่วนที่ 1: Scaling (การขยายระบบ) 🚀
+        </h2>
+        <p class="mb-6 text-gray-300">
+          เมื่อ traffic เพิ่มขึ้น เราสามารถเพิ่มจำนวน Pods
+          เพื่อรองรับการใช้งานได้ทันที และลดจำนวนลงเมื่อไม่ต้องการ
+          เพื่อประหยัดทรัพยากร
+        </p>
+
+        <div
+          class="mb-6 bg-gray-800/50 border-l-4 border-blue-400 p-4 rounded-r-lg"
+        >
+          <h4 class="font-bold text-blue-300 mb-2">
+            🧠 วิธีคิดเบื้องหลัง (How it works)
+          </h4>
+          <p class="text-sm text-gray-300">
+            เราไม่ได้สั่งสร้าง Pods ทีละตัว แต่เราสั่ง "ผู้จัดการ" ที่เรียกว่า
+            <strong>Deployment</strong> ว่า "ช่วยดูแลให้มี Pods 5 ตัวตลอดเวลานะ"
+            จากนั้น Deployment จะไปจัดการสร้าง Pods ที่ขาดให้เราเอง
+            นี่คือหลักการของ <strong>Declarative System</strong>:
+            เราแค่ประกาศผลลัพธ์ที่ต้องการ (Desired State)
+            แล้วปล่อยให้ระบบจัดการวิธีการให้เอง
+          </p>
+        </div>
+
+        <div
+          id="scaling-pods"
+          class="flex flex-wrap gap-4 p-4 border border-gray-600 rounded-lg mb-6 min-h-[84px] bg-gray-800/50"
+        >
+          <!-- Pods will be dynamically added here -->
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+          <button
+            id="scale-up-btn"
+            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+          >
+            Scale Up to 5 Pods
+          </button>
+          <button
+            id="scale-down-btn"
+            class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+          >
+            Scale Down to 2 Pods
+          </button>
+        </div>
+
+        <div class="mt-6">
+          <h3 class="font-semibold text-white mb-2">คำสั่งที่ใช้:</h3>
+          <div class="code-block p-4">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            <code id="scaling-command-output"
+              >$ kubectl scale deployment hello-k8s-deployment
+              --replicas=2</code
+            >
+          </div>
+        </div>
+      </div>
+
+      <!-- Self-Healing Section -->
+      <div class="card p-6">
+        <h2 class="text-2xl font-bold text-white mb-4">
+          ส่วนที่ 2: Self-Healing (การฟื้นฟูตัวเอง) ❤️‍🩹
+        </h2>
+        <p class="mb-6 text-gray-300">
+          จะเกิดอะไรขึ้นถ้า Pod ตัวหนึ่งล่มไป? Kubernetes จะตรวจจับและสร้าง Pod
+          ใหม่ขึ้นมาแทนที่โดยอัตโนมัติ เพื่อให้ระบบทำงานต่อเนื่อง
+        </p>
+
+        <div
+          class="mb-6 bg-gray-800/50 border-l-4 border-red-400 p-4 rounded-r-lg"
+        >
+          <h4 class="font-bold text-red-300 mb-2">
+            🧠 วิธีคิดเบื้องหลัง (How it works)
+          </h4>
+          <p class="text-sm text-gray-300">
+            เบื้องหลัง <strong>Deployment</strong> มีสิ่งที่เรียกว่า
+            <strong>Controller Loop</strong> ทำงานอยู่ตลอดเวลา
+            มันจะคอยเปรียบเทียบ "สถานะที่ควรจะเป็น" (Desired State: มี 2 Pods)
+            กับ "สถานะที่เป็นอยู่จริง" (Actual State: มีแค่ 1 Pod เพราะอีกล่มไป)
+            เมื่อไหร่ก็ตามที่สถานะ 2 อย่างนี้ไม่ตรงกัน Controller จะลงมือแก้ไข
+            (Reconcile) โดยการสร้าง Pod
+            ใหม่ขึ้นมาเพื่อให้กลับสู่สถานะที่ควรจะเป็น
+          </p>
+        </div>
+
+        <div
+          id="healing-pods"
+          class="flex flex-wrap gap-4 p-4 border border-gray-600 rounded-lg mb-6 min-h-[84px] bg-gray-800/50"
+        >
+          <!-- Pods will be dynamically added here -->
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+          <button
+            id="crash-pod-btn"
+            class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+          >
+            จำลอง Pod ล่ม!
+          </button>
+          <button
+            id="reset-healing-btn"
+            class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+          >
+            Reset
+          </button>
+        </div>
+
+        <div class="mt-6">
+          <h3 class="font-semibold text-white mb-2">คำสั่งที่ใช้:</h3>
+          <div class="code-block p-4">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            <code id="healing-command-output"
+              >$ kubectl delete pod &lt;pod-name&gt;</code
+            >
+          </div>
+        </div>
+      </div>
+
+      <footer class="text-center mt-12 text-gray-500">
+        <p>
+          นี่คือพลังของ Declarative System: เราแค่ "ประกาศ" สิ่งที่ต้องการ และ
+          Kubernetes จะทำให้มันเป็นจริง
+        </p>
+      </footer>
+    </div>
+
+    <script>
+      // --- Utility Functions ---
+      function copyCode(button) {
+        const codeBlock = button.nextElementSibling;
+        const text = codeBlock.innerText;
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+
+        const originalText = button.innerText;
+        button.innerText = "Copied!";
+        setTimeout(() => {
+          button.innerText = originalText;
+        }, 1500);
+      }
+
+      function createPodElement(id) {
+        const pod = document.createElement("div");
+        pod.className = "pod";
+        pod.id = `pod-${id}`;
+        pod.textContent = `Pod ${id}`;
+        return pod;
+      }
+
+      // --- Scaling Simulation ---
+      const scalingPodsContainer = document.getElementById("scaling-pods");
+      const scaleUpBtn = document.getElementById("scale-up-btn");
+      const scaleDownBtn = document.getElementById("scale-down-btn");
+      const scalingCommandOutput = document.getElementById(
+        "scaling-command-output"
+      );
+      let currentScalingPods = 2;
+
+      function renderScalingPods(targetCount) {
+        const diff = targetCount - scalingPodsContainer.children.length;
+        if (diff > 0) {
+          // Scale Up
+          for (let i = 0; i < diff; i++) {
+            const podId = scalingPodsContainer.children.length + 1;
+            const pod = createPodElement(podId);
+            pod.classList.add("creating");
+            scalingPodsContainer.appendChild(pod);
+          }
+        } else if (diff < 0) {
+          // Scale Down
+          const podsToRemove = Array.from(scalingPodsContainer.children).slice(
+            targetCount
+          );
+          podsToRemove.forEach((pod) => {
+            pod.classList.add("terminating");
+            setTimeout(() => pod.remove(), 500);
+          });
+        }
+        currentScalingPods = targetCount;
+        scalingCommandOutput.textContent = `$ kubectl scale deployment hello-k8s-deployment --replicas=${targetCount}`;
+      }
+
+      scaleUpBtn.addEventListener("click", () => renderScalingPods(5));
+      scaleDownBtn.addEventListener("click", () => renderScalingPods(2));
+
+      // --- Self-Healing Simulation ---
+      const healingPodsContainer = document.getElementById("healing-pods");
+      const crashPodBtn = document.getElementById("crash-pod-btn");
+      const resetHealingBtn = document.getElementById("reset-healing-btn");
+      const healingCommandOutput = document.getElementById(
+        "healing-command-output"
+      );
+      let healingPodCounter = 2;
+      let isHealing = false;
+
+      function initializeHealingPods() {
+        healingPodsContainer.innerHTML = "";
+        for (let i = 1; i <= 2; i++) {
+          const pod = createPodElement(i);
+          pod.classList.add("creating");
+          healingPodsContainer.appendChild(pod);
+        }
+        healingPodCounter = 2;
+      }
+
+      crashPodBtn.addEventListener("click", () => {
+        if (isHealing || healingPodsContainer.children.length === 0) return;
+        isHealing = true;
+
+        const podToCrash = healingPodsContainer.children[0];
+        const crashedPodName = podToCrash.textContent
+          .replace(" ", "-")
+          .toLowerCase();
+        healingCommandOutput.textContent = `$ kubectl delete pod ${crashedPodName}-xyz`;
+
+        podToCrash.classList.add("crashed");
+
+        setTimeout(() => {
+          podToCrash.classList.remove("crashed");
+          podToCrash.classList.add("terminating");
+          setTimeout(() => podToCrash.remove(), 500);
+        }, 1000);
+
+        setTimeout(() => {
+          healingPodCounter++;
+          const newPod = createPodElement(healingPodCounter);
+          newPod.classList.add("creating");
+          healingPodsContainer.appendChild(newPod);
+          healingCommandOutput.textContent = `// Pod ใหม่ถูกสร้างขึ้นมาแทนที่โดยอัตโนมัติ!`;
+          isHealing = false;
+        }, 1800);
+      });
+
+      resetHealingBtn.addEventListener("click", initializeHealingPods);
+
+      // --- Initial Render ---
+      renderScalingPods(2);
+      initializeHealingPods();
+    </script>
+  </body>
+</html>
