@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-k8s-deployment
+spec:
+  replicas: 2 # สั่งให้สร้าง Pods ขึ้นมา 2 ตัวเพื่อความ
+  selector:
+    matchLabels:
+      app: hello-k8s
+  template:
+    metadata:
+      labels:
+        app: hello-k8s
+    spec:
+      containers:
+        - name: hello-k8s-container
+          image: boomgt123/hello-k8s:1.0 # <-- แก้เป็น Image ของคุณ
+          ports:
+            - containerPort: 3000 # Port ที่แอปเรารันใน Container
