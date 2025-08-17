@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      Kubernetes: Service + Pods + ReplicationController @ Port 8080
+    </title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --C-client: #0ea5e9; /* sky-500 */
+        --C-svc: #6366f1; /* indigo-500 */
+        --C-rc: #a855f7; /* purple-500 */
+        --C-pod: #22c55e; /* green-500 */
+        --C-packet: #fb923c; /* orange-400 */
+        --C-note: #0f172a; /* slate-900 */
+        --C-muted: #94a3b8; /* slate-400 */
+      }
+      body {
+        font-family: "Sarabun", sans-serif;
+        background: #f0f4f8;
+        color: #334155;
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 24px auto;
+      }
+      .board {
+        position: relative;
+        height: 640px;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+          0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      }
+      #stage {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+      }
+      #overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+      }
+      .controls {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: center;
+        margin-top: 12px;
+      }
+      .btn {
+        padding: 0.55rem 1rem;
+        border-radius: 0.65rem;
+        color: #fff;
+        font-weight: 700;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+      }
+      .btn-primary {
+        background: #2563eb;
+      }
+      .btn-slate {
+        background: #334155;
+      }
+      .btn-green {
+        background: #059669;
+      }
+      .hint {
+        color: #64748b;
+        text-align: center;
+        margin-top: 6px;
+      }
+      details {
+        margin-top: 18px;
+        background: #fff;
+        border-radius: 12px;
+        padding: 12px 16px;
+        box-shadow: 0 6px 10px rgba(0, 0, 0, 0.06);
+      }
+      pre {
+        background: #0b1220;
+        color: #e5e7eb;
+        padding: 12px;
+        border-radius: 10px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="text-center mb-3">
+        <h1 class="text-3xl md:text-4xl font-bold text-blue-600">
+          Kubernetes Flow: Incoming Request → Service (Load Balancer) → Pods (3
+          replicas) → RC
+        </h1>
+      </header>
+
+      <div class="board">
+        <canvas id="stage"></canvas>
+        <svg id="overlay"></svg>
+      </div>
+
+      <div class="controls">
+        <button id="btn-traffic" class="btn btn-primary">▶️ Run Traffic</button>
+        <button id="btn-scale-demo" class="btn btn-green">
+          ⚙️ Scale-out Demo (1 ➜ 3)
+        </button>
+        <button id="btn-reset" class="btn btn-slate">↺ Reset</button>
+        <label
+          class="text-sm text-slate-600 select-none inline-flex items-center gap-2"
+          ><input
+            id="toggle-ctrl"
+            type="checkbox"
+            class="accent-purple-600"
+            checked
+          />
+          แสดงเส้นควบคุม RC → Pods</label
+        >
+      </div>
+      <div id="caption" class="hint">
+        Incoming request (พอร์ต <strong>8080</strong>) โจทย์: ลูกศรแสดงการไหล
+        และ Callout อธิบายเหตุการณ์
+      </div>
+
+      <details open>
+        <summary class="font-bold text-slate-700">สรุปแนวคิด</summary>
+        <ul class="list-disc ml-6 text-slate-700">
+          <li>
+            <strong>Incoming request</strong> → เข้ามาที่ External IP ของ
+            <strong>Service (kubia-http)</strong> พอร์ต 8080
+          </li>
+          <li>
+            <strong>Service</strong> ทำหน้าที่
+            <em>Load Balancer</em> กระจายไปยัง <strong>Pods</strong> 3 ตัว:
+            kubia-4jfyf, kubia-hczji, kubia-iq9y6
+          </li>
+          <li>
+            <strong>ReplicationController (kubia)</strong> คุมให้มี replicas = 3
+            เสมอ (ถ้าขาดจะสร้างเพิ่ม)
+          </li>
+        </ul>
+      </details>
+
+      <details>
+        <summary class="font-bold text-slate-700">
+          ตัวอย่างคำสั่ง (Shell)
+        </summary>
+        <pre><code># 1) สั่ง scale ให้ RC kubia มี replicas = 3
+kubectl scale rc kubia --replicas=3
+
+# 2) ตรวจสอบ RC
+kubectl get rc
+# NAME    DESIRED   CURRENT   READY   AGE
+# kubia   3         3         2       17m
+
+# 3) ตรวจสอบ Pods
+kubectl get pods
+# NAME          READY   STATUS    RESTARTS   AGE
+# kubia-hczji   1/1     Running   0          7s
+# kubia-iq9y6   0/1     Pending   0          7s
+# kubia-4jfyf   1/1     Running   0          18m
+
+# 4) ยิง request ไปที่ External IP ของ Service (พอร์ต 8080)
+# สังเกตว่า Service กระจายโหลดไปแต่ละ Pod
+curl 104.155.74.57:8080
+</code></pre>
+      </details>
+    </div>
+
+    <script>
+      // =============================
+      // Canvas + SVG Flow — โค้ดหลัก
+      // - วาด "กล่อง" ทั้งหมดด้วย Canvas ให้ดูสวย และมีเอฟเฟ็กต์เงา/ไฮไลต์
+      // - วาด "ลูกศรเส้นโค้ง + หัวลูกศร" + แพ็กเก็ตที่วิ่ง ตามเส้น ด้วย SVG
+      // - มี Callout (กล่องข้อความ + ลูกศรชี้) แบบ SVG ระหว่างสเต็ป
+      // =============================
+
+      (function () {
+        const stage = document.getElementById("stage");
+        const svg = document.getElementById("overlay");
+        const btnTraffic = document.getElementById("btn-traffic");
+        const btnScale = document.getElementById("btn-scale-demo");
+        const btnReset = document.getElementById("btn-reset");
+        const toggleCtrl = document.getElementById("toggle-ctrl");
+        const caption = document.getElementById("caption");
+        const board = document.querySelector(".board");
+        const ctx = stage.getContext("2d");
+
+        // ---------- DPR & Resize ----------
+        function fit() {
+          const dpr = Math.max(1, window.devicePixelRatio || 1);
+          const { clientWidth: w, clientHeight: h } = board;
+          stage.width = w * dpr;
+          stage.height = h * dpr;
+          stage.style.width = w + "px";
+          stage.style.height = h + "px";
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          svg.setAttribute("width", w);
+          svg.setAttribute("height", h);
+          drawAll();
+        }
+        window.addEventListener("resize", fit);
+
+        // ---------- Layout Model ----------
+        const M = {
+          client: {
+            x: 30,
+            y: 240,
+            w: 150,
+            h: 90,
+            type: "client",
+            title: "👤 Client",
+            subtitle: "Incoming on :8080",
+          },
+          service: {
+            x: 260,
+            y: 210,
+            w: 220,
+            h: 120,
+            type: "svc",
+            title: "🌐 Service (kubia-http)",
+            subtitle: "ExternalIP: 104.155.74.57\nPort: 8080",
+          },
+          rc: {
+            x: 540,
+            y: 30,
+            w: 270,
+            h: 110,
+            type: "rc",
+            title: "🔄 ReplicationController (kubia)",
+            subtitle: "replicas: 3 (desired)",
+          },
+          nodeBox: { x: 240, y: 360, w: 540, h: 240 },
+          pods: [
+            {
+              id: "kubia-4jfyf",
+              name: "kubia-4jfyf",
+              ip: "10.244.1.12",
+              x: 260,
+              y: 400,
+              w: 170,
+              h: 100,
+              alpha: 1,
+            },
+            {
+              id: "kubia-hczji",
+              name: "kubia-hczji",
+              ip: "10.244.1.17",
+              x: 470,
+              y: 400,
+              w: 170,
+              h: 100,
+              alpha: 1,
+            },
+            {
+              id: "kubia-iq9y6",
+              name: "kubia-iq9y6",
+              ip: "10.244.1.23",
+              x: 680,
+              y: 400,
+              w: 170,
+              h: 100,
+              alpha: 1,
+            },
+          ],
+          // สำหรับ demo scale-out เราจะเริ่มจาก 1 pod แล้วค่อยเติมจนครบ 3
+        };
+
+        // ---------- Canvas Primitives ----------
+        function RRect(x, y, w, h, r) {
+          const rr = Math.min(r, w / 2, h / 2);
+          ctx.beginPath();
+          ctx.moveTo(x + rr, y);
+          ctx.arcTo(x + w, y, x + w, y + h, rr);
+          ctx.arcTo(x + w, y + h, x, y + h, rr);
+          ctx.arcTo(x, y + h, x, y, rr);
+          ctx.arcTo(x, y, x + w, y, rr);
+          ctx.closePath();
+        }
+        function card(
+          x,
+          y,
+          w,
+          h,
+          {
+            bg = "#fff",
+            border = "#e2e8f0",
+            accent = "#94a3b8",
+            shadow = true,
+          } = {}
+        ) {
+          if (shadow) {
+            ctx.save();
+            ctx.shadowColor = "rgba(0,0,0,.12)";
+            ctx.shadowBlur = 18;
+            ctx.shadowOffsetY = 8;
+          }
+          ctx.fillStyle = bg;
+          RRect(x, y, w, h, 14);
+          ctx.fill();
+          ctx.restore();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = border;
+          ctx.stroke();
+          // accent top bar
+          ctx.fillStyle = accent;
+          RRect(x, y, w, 6, 8);
+          ctx.fill();
+        }
+        function textCenter(
+          text,
+          x,
+          y,
+          size = 14,
+          color = "#0f172a",
+          bold = false
+        ) {
+          ctx.fillStyle = color;
+          ctx.font = `${bold ? "700" : "500"} ${size}px Sarabun, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.fillText(text, x, y);
+        }
+        function textMulti(lines, x, y, size = 12, color = "#475569") {
+          ctx.fillStyle = color;
+          ctx.font = `500 ${size}px Sarabun, sans-serif`;
+          ctx.textAlign = "center";
+          const arr = String(lines).split("\n");
+          arr.forEach((ln, i) => ctx.fillText(ln, x, y + i * (size + 2)));
+        }
+        function dashedRect(x, y, w, h, color = "#cbd5e1") {
+          ctx.save();
+          ctx.setLineDash([8, 8]);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = color;
+          RRect(x, y, w, h, 10);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // ---------- Draw Nodes ----------
+        function drawNodes() {
+          // Node boundary
+          dashedRect(
+            M.nodeBox.x,
+            M.nodeBox.y,
+            M.nodeBox.w,
+            M.nodeBox.h,
+            "#cbd5e1"
+          );
+          textCenter(
+            "Node / Worker Machine",
+            M.nodeBox.x + M.nodeBox.w / 2,
+            M.nodeBox.y + 18,
+            12,
+            "#94a3b8"
+          );
+
+          // Client
+          card(M.client.x, M.client.y, M.client.w, M.client.h, {
+            bg: "#e0f2fe",
+            border: "#bae6fd",
+            accent: "var(--C-client)",
+          });
+          textCenter(
+            M.client.title,
+            M.client.x + M.client.w / 2,
+            M.client.y + 36,
+            16,
+            "#0c4a6e",
+            true
+          );
+          textCenter(
+            "Incoming :8080",
+            M.client.x + M.client.w / 2,
+            M.client.y + 62,
+            12,
+            "#0369a1"
+          );
+
+          // Service
+          card(M.service.x, M.service.y, M.service.w, M.service.h, {
+            bg: "#eef2ff",
+            border: "#e0e7ff",
+            accent: "var(--C-svc)",
+          });
+          textCenter(
+            M.service.title,
+            M.service.x + M.service.w / 2,
+            M.service.y + 44,
+            16,
+            "#3730a3",
+            true
+          );
+          textMulti(
+            M.service.subtitle,
+            M.service.x + M.service.w / 2,
+            M.service.y + 70,
+            12,
+            "#4338ca"
+          );
+
+          // RC
+          card(M.rc.x, M.rc.y, M.rc.w, M.rc.h, {
+            bg: "#faf5ff",
+            border: "#f3e8ff",
+            accent: "var(--C-rc)",
+          });
+          textCenter(
+            M.rc.title,
+            M.rc.x + M.rc.w / 2,
+            M.rc.y + 42,
+            16,
+            "#6b21a8",
+            true
+          );
+          textCenter(
+            "Ensures 3 Pods running",
+            M.rc.x + M.rc.w / 2,
+            M.rc.y + 68,
+            12,
+            "#7e22ce"
+          );
+
+          // Pods
+          M.pods.forEach((p) => {
+            ctx.save();
+            ctx.globalAlpha = p.alpha == null ? 1 : p.alpha;
+            card(p.x, p.y, p.w, p.h, {
+              bg: "#dcfce7",
+              border: "#bbf7d0",
+              accent: "var(--C-pod)",
+            });
+            textCenter(
+              "📦 " + p.name,
+              p.x + p.w / 2,
+              p.y + 42,
+              15,
+              "#166534",
+              true
+            );
+            textCenter(
+              "Pod IP: " + p.ip,
+              p.x + p.w / 2,
+              p.y + 68,
+              12,
+              "#065f46"
+            );
+            ctx.restore();
+          });
+        }
+
+        // ---------- SVG Utilities ----------
+        function S(tag, attrs = {}) {
+          const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+          for (const k in attrs) {
+            n.setAttribute(k, attrs[k]);
+          }
+          return n;
+        }
+        function ensureDefs() {
+          if (svg.querySelector("defs")) return;
+          const defs = S("defs");
+          const mk = (id, color) => {
+            const m = S("marker", {
+              id,
+              markerWidth: 12,
+              markerHeight: 8,
+              refX: 10,
+              refY: 4,
+              orient: "auto",
+            });
+            const p = S("path", { d: "M0,0 L10,4 L0,8 Z", fill: color });
+            m.appendChild(p);
+            defs.appendChild(m);
+          };
+          mk("arrow-client", "var(--C-client)");
+          mk("arrow-svc", "var(--C-svc)");
+          mk("arrow-rc", "var(--C-rc)");
+          mk("arrow-note", "var(--C-muted)");
+          svg.appendChild(defs);
+        }
+        function cpt(obj, side) {
+          // connection points
+          switch (side) {
+            case "right":
+              return { x: obj.x + obj.w, y: obj.y + obj.h / 2 };
+            case "left":
+              return { x: obj.x, y: obj.y + obj.h / 2 };
+            case "top":
+              return { x: obj.x + obj.w / 2, y: obj.y };
+            case "bottom":
+              return { x: obj.x + obj.w / 2, y: obj.y + obj.h };
+            case "center":
+              return { x: obj.x + obj.w / 2, y: obj.y + obj.h / 2 };
+          }
+        }
+        function pathD(a, b) {
+          const dx = Math.max(40, Math.abs(b.x - a.x) * 0.4);
+          const c1 = { x: a.x + dx, y: a.y };
+          const c2 = { x: b.x - dx, y: b.y };
+          return `M ${a.x},${a.y} C ${c1.x},${c1.y} ${c2.x},${c2.y} ${b.x},${b.y}`;
+        }
+
+        const pathMap = new Map();
+        function drawArrows() {
+          const showCtrl = toggleCtrl.checked;
+          svg.innerHTML = "";
+          ensureDefs();
+          const g = S("g", { "stroke-linecap": "round", fill: "none" });
+          svg.appendChild(g);
+
+          // Client -> Service
+          const p1 = S("path", {
+            d: pathD(cpt(M.client, "right"), cpt(M.service, "left")),
+            stroke: "var(--C-client)",
+            "stroke-width": 3,
+            "marker-end": "url(#arrow-client)",
+          });
+          g.appendChild(p1);
+          pathMap.set("cli-svc", p1);
+
+          // Service -> Pods (3)
+          M.pods.forEach((p, idx) => {
+            const pid = `svc-${idx}`;
+            const ph = S("path", {
+              d: pathD(cpt(M.service, "right"), cpt(p, "top")),
+              stroke: "var(--C-svc)",
+              "stroke-width": 3,
+              "stroke-dasharray": "10 8",
+              "marker-end": "url(#arrow-svc)",
+            });
+            g.appendChild(ph);
+            pathMap.set(pid, ph);
+          });
+
+          // RC -> Pods (optional)
+          if (showCtrl) {
+            M.pods.forEach((p, idx) => {
+              const pid = `rc-${idx}`;
+              const ph = S("path", {
+                d: pathD(cpt(M.rc, "bottom"), cpt(p, "top")),
+                stroke: "var(--C-rc)",
+                "stroke-width": 2,
+                "stroke-dasharray": "8 6",
+                "marker-end": "url(#arrow-rc)",
+              });
+              g.appendChild(ph);
+              pathMap.set(pid, ph);
+            });
+          }
+        }
+
+        // ---------- Packets on SVG Paths ----------
+        class Packet {
+          constructor() {
+            this.stage = 0;
+            this.path = pathMap.get("cli-svc");
+            this.el = S("circle", { r: 5, fill: "var(--C-packet)" });
+            svg.appendChild(this.el);
+            this.len = this.path.getTotalLength();
+            this.pos = 0;
+            this.speed = 160;
+            this.dead = false;
+          }
+          chooseNext() {
+            // เลือก pod แบบสุ่ม (เฉพาะที่ alpha>0)
+            const live = M.pods.filter((p) => (p.alpha ?? 1) > 0.9);
+            const idx = Math.floor(Math.random() * live.length);
+            const targetId = `svc-${M.pods.indexOf(live[idx])}`;
+            this.path = pathMap.get(targetId);
+            this.len = this.path.getTotalLength();
+            this.pos = 0;
+            this.stage = 1;
+          }
+          tick(dt) {
+            if (!this.path) {
+              this.dead = true;
+              return;
+            }
+            this.pos += this.speed * dt;
+            if (this.pos >= this.len) {
+              if (this.stage === 0) {
+                this.chooseNext();
+                return;
+              }
+              this.dead = true;
+              return;
+            }
+            const pt = this.path.getPointAtLength(this.pos);
+            this.el.setAttribute("cx", pt.x);
+            this.el.setAttribute("cy", pt.y);
+          }
+          remove() {
+            this.el.remove();
+          }
+        }
+        const packets = new Set();
+        let pktTimer = null;
+        let tsPrev = performance.now();
+        function loopPackets(ts) {
+          const dt = Math.min(0.05, (ts - tsPrev) / 1000);
+          tsPrev = ts;
+          [...packets].forEach((p) => {
+            p.tick(dt);
+            if (p.dead) {
+              p.remove();
+              packets.delete(p);
+            }
+          });
+          requestAnimationFrame(loopPackets);
+        }
+
+        function startTraffic() {
+          if (pktTimer) return;
+          pktTimer = setInterval(() => {
+            packets.add(new Packet());
+          }, 1500);
+          caption.innerHTML =
+            "กำลังส่งแพ็กเก็ตจาก Client → Service (8080) → Pods";
+        }
+        function stopTraffic() {
+          clearInterval(pktTimer);
+          pktTimer = null;
+          caption.innerHTML = "หยุดส่งแพ็กเก็ต";
+        }
+
+        // ---------- Canvas FX (Pulse รอบ Service/RC) ----------
+        const FX = { t: 0, rcPulse: false, svcPulse: false };
+        function drawFX() {
+          // Pulse RC
+          if (FX.rcPulse) {
+            const c = cpt(M.rc, "center");
+            for (let i = 0; i < 3; i++) {
+              const r = 18 + ((FX.t * 120 + i * 40) % 120);
+              const a = 1 - r / 140;
+              ctx.beginPath();
+              ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+              ctx.strokeStyle = `rgba(168,85,247,${a.toFixed(3)})`;
+              ctx.lineWidth = 3;
+              ctx.stroke();
+            }
+          }
+          // Pulse Service
+          if (FX.svcPulse) {
+            const c = cpt(M.service, "center");
+            for (let i = 0; i < 3; i++) {
+              const r = 16 + ((FX.t * 150 + i * 32) % 110);
+              const a = 1 - r / 130;
+              ctx.beginPath();
+              ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+              ctx.strokeStyle = `rgba(99,102,241,${a.toFixed(3)})`;
+              ctx.lineWidth = 2.5;
+              ctx.stroke();
+            }
+          }
+        }
+
+        function loopCanvas() {
+          ctx.clearRect(0, 0, stage.width, stage.height);
+          drawNodes();
+          drawFX();
+          FX.t += 0.016;
+          requestAnimationFrame(loopCanvas);
+        }
+
+        // ---------- Callouts (SVG) ----------
+        const ann = { layer: null, items: new Map() };
+        function ensureAnn() {
+          if (ann.layer) return;
+          ann.layer = S("g", { id: "ann" });
+          svg.appendChild(ann.layer);
+        }
+        function callout(id, text, target, side = "right") {
+          ensureAnn();
+          removeCallout(id);
+          const g = S("g", { "data-id": id });
+          const rect = S("rect", {
+            rx: 10,
+            fill: "var(--C-note)",
+            opacity: 0.92,
+            stroke: "var(--C-muted)",
+            "stroke-width": 1,
+          });
+          const t = S("text", {
+            fill: "#fff",
+            "font-size": 12,
+            "xml:space": "preserve",
+          });
+          String(text)
+            .split("\n")
+            .forEach((ln, i) => {
+              const s = S("tspan");
+              s.textContent = ln;
+              if (i > 0) s.setAttribute("x", "0");
+              s.setAttribute("dy", i === 0 ? "0" : "1.2em");
+              t.appendChild(s);
+            });
+          g.appendChild(t);
+          ann.layer.appendChild(g);
+          const bb = t.getBBox();
+          const pad = 10;
+          const w = bb.width + pad * 2;
+          const h = bb.height + pad * 2;
+          const pt = target();
+          let x = pt.x + 24,
+            y = pt.y - 24;
+          if (side === "left") {
+            x = pt.x - w - 24;
+          }
+          if (side === "above") {
+            x = pt.x - w / 2;
+            y = pt.y - h - 24;
+          }
+          if (side === "below") {
+            x = pt.x - w / 2;
+            y = pt.y + 24;
+          }
+          x = Math.max(8, Math.min(x, board.clientWidth - w - 8));
+          y = Math.max(8, Math.min(y, board.clientHeight - h - 8));
+          rect.setAttribute("x", x);
+          rect.setAttribute("y", y);
+          rect.setAttribute("width", w);
+          rect.setAttribute("height", h);
+          t.setAttribute("x", x + pad);
+          t.setAttribute("y", y + pad + 12);
+          let anchor = { x: x, y: y + h / 2 };
+          if (side === "right") anchor = { x: x + w, y: y + h / 2 };
+          if (side === "above") anchor = { x: x + w / 2, y: y };
+          if (side === "below") anchor = { x: x + w / 2, y: y + h };
+          const p = S("path", {
+            d: pathD(anchor, pt),
+            stroke: "var(--C-muted)",
+            "stroke-width": 2,
+            fill: "none",
+            "marker-end": "url(#arrow-note)",
+          });
+          g.appendChild(p);
+          g.appendChild(rect);
+          g.appendChild(t);
+          ann.items.set(id, { g, rect, t, p, target, side, w, h });
+          return g;
+        }
+        function removeCallout(id) {
+          const it = ann.items.get(id);
+          if (!it) return;
+          it.g.remove();
+          ann.items.delete(id);
+        }
+        function clearCallouts() {
+          [...ann.items.keys()].forEach(removeCallout);
+        }
+
+        // ---------- Draw All
+        function drawAll() {
+          drawArrows();
+          clearCallouts();
+        }
+
+        // ---------- Reset to default (3 pods)
+        function reset() {
+          M.pods[0].alpha = 1;
+          M.pods[1].alpha = 1;
+          M.pods[2].alpha = 1;
+          FX.rcPulse = false;
+          FX.svcPulse = false;
+          clearCallouts();
+          drawAll();
+          caption.textContent = "พร้อมแสดง Flow และสาธิต";
+        }
+
+        // ---------- Scale-out Demo (1 -> 3)
+        function scaleDemo() {
+          // เริ่มด้วย 1 pod
+          M.pods[0].alpha = 1;
+          M.pods[1].alpha = 0;
+          M.pods[2].alpha = 0;
+          drawAll();
+          FX.rcPulse = false;
+          FX.svcPulse = true;
+          caption.innerHTML = "Scale-out Demo: เริ่มจาก 1 Pod → ตั้ง desired=3";
+
+          clearCallouts();
+          callout(
+            "svc",
+            "Incoming request เข้า Service (ExternalIP)\nพอร์ต 8080",
+            () => cpt(M.service, "center"),
+            "below"
+          );
+
+          setTimeout(() => {
+            FX.rcPulse = true;
+            callout(
+              "rc",
+              "RC (kubia) ตรวจพบ replicas < 3\nสั่งสร้าง Pod เพิ่ม",
+              () => cpt(M.rc, "bottom"),
+              "below"
+            );
+          }, 1200);
+
+          // สร้าง pod 2
+          setTimeout(() => {
+            M.pods[1].alpha = 0.05;
+            const id = setInterval(() => {
+              M.pods[1].alpha = Math.min(1, M.pods[1].alpha + 0.08);
+            }, 60);
+            setTimeout(() => clearInterval(id), 800);
+            callout(
+              "p2",
+              "สร้าง Pod: kubia-hczji",
+              () => cpt(M.pods[1], "top"),
+              "above"
+            );
+            drawAll();
+          }, 2200);
+
+          // สร้าง pod 3
+          setTimeout(() => {
+            M.pods[2].alpha = 0.05;
+            const id = setInterval(() => {
+              M.pods[2].alpha = Math.min(1, M.pods[2].alpha + 0.08);
+            }, 60);
+            setTimeout(() => clearInterval(id), 800);
+            removeCallout("p2");
+            callout(
+              "p3",
+              "สร้าง Pod: kubia-iq9y6",
+              () => cpt(M.pods[2], "top"),
+              "above"
+            );
+            drawAll();
+          }, 3400);
+
+          // สรุป
+          setTimeout(() => {
+            FX.rcPulse = false;
+            FX.svcPulse = false;
+            clearCallouts();
+            callout(
+              "ok",
+              "สเกลครบ 3 ตัวแล้ว\nService จะ LB ให้ทั้ง 3 Pods",
+              () => cpt(M.service, "center"),
+              "above"
+            );
+            caption.innerHTML = "เสร็จสิ้นการ Scale-out → replicas = 3";
+          }, 4800);
+        }
+
+        // ---------- Events ----------
+        btnTraffic.addEventListener("click", () => {
+          if (pktTimer) {
+            stopTraffic();
+            btnTraffic.textContent = "▶️ Run Traffic";
+          } else {
+            startTraffic();
+            btnTraffic.textContent = "⏹ Stop Traffic";
+          }
+        });
+        btnScale.addEventListener("click", scaleDemo);
+        btnReset.addEventListener("click", reset);
+        toggleCtrl.addEventListener("change", drawAll);
+
+        // ---------- Boot ----------
+        fit();
+        ensureDefs();
+        drawAll();
+        reset();
+        requestAnimationFrame(loopCanvas);
+        requestAnimationFrame(loopPackets);
+      })();
+    </script>
+  </body>
+</html>

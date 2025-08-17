@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kubernetes Network Flow - Pod to Internet</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(45deg, #326ce5, #2196F3);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            margin: 10px 0 0 0;
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .flow-container {
+            position: relative;
+            margin: 40px 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        canvas {
+            width: 100%;
+            max-width: 900px;
+            height: 500px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            background: #f8f9fa;
+        }
+        
+        .explanation {
+            margin-top: 40px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+        
+        .step {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+            border-left: 5px solid #326ce5;
+        }
+        
+        .step h3 {
+            color: #326ce5;
+            margin: 0 0 15px 0;
+            font-size: 1.3em;
+        }
+        
+        .step p {
+            line-height: 1.6;
+            margin: 0;
+            color: #555;
+        }
+        
+        .controls {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .btn {
+            background: #326ce5;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 0 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(50, 108, 229, 0.3);
+        }
+        
+        .btn:hover {
+            background: #2952cc;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(50, 108, 229, 0.4);
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .pulsing {
+            animation: pulse 1.5s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌐 Kubernetes Network Flow</h1>
+            <p>การเดินทางของข้อมูลจาก Pod สู่อินเทอร์เน็ต</p>
+        </div>
+        
+        <div class="content">
+            <div class="controls">
+                <button class="btn" onclick="startAnimation()">🚀 เริ่มการเดินทาง</button>
+                <button class="btn" onclick="resetAnimation()">🔄 เริ่มใหม่</button>
+            </div>
+            
+            <div class="flow-container">
+                <canvas id="networkCanvas"></canvas>
+            </div>
+            
+            <div class="explanation">
+                <div class="step">
+                    <h3>1. Pod Internal Network</h3>
+                    <p>Container ใน Pod มี IP Address ภายในที่ใช้สื่อสารในระดับ Cluster เท่านั้น เช่น 10.244.0.5 ซึ่งโลกภายนอกจะไม่รู้จัก IP นี้</p>
+                </div>
+                
+                <div class="step">
+                    <h3>2. Node Host Network</h3>
+                    <p>Node ที่ Pod ไปรันอยู่จะมี IP Address ของตัวเองที่สามารถเชื่อมต่อกับเครือข่ายภายนอกได้ เช่น 192.168.1.100</p>
+                </div>
+                
+                <div class="step">
+                    <h3>3. NAT Translation</h3>
+                    <p>เมื่อ Container ส่ง request ออกไป Node จะทำ NAT โดยเปลี่ยน Source IP จาก Pod IP เป็น Node IP</p>
+                </div>
+                
+                <div class="step">
+                    <h3>4. Internet Response</h3>
+                    <p>Server ปลายทางจะเห็น IP ของ Node เป็นต้นทาง และตอบกลับมาที่ Node ซึ่งจะส่งต่อให้ Pod ที่ถูกต้อง</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('networkCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas size
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * window.devicePixelRatio;
+            canvas.height = rect.height * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        let animationStep = 0;
+        let animationId;
+        let particles = [];
+        
+        // Network components
+        const components = {
+            pod: { x: 100, y: 200, width: 80, height: 60, ip: '10.244.0.5' },
+            node: { x: 300, y: 200, width: 120, height: 80, ip: '192.168.1.100' },
+            internet: { x: 600, y: 200, width: 100, height: 60, ip: 'google.com' }
+        };
+        
+        // Particle system for data flow
+        class Particle {
+            constructor(startX, startY, endX, endY, color, delay = 0) {
+                this.startX = startX;
+                this.startY = startY;
+                this.endX = endX;
+                this.endY = endY;
+                this.x = startX;
+                this.y = startY;
+                this.color = color;
+                this.progress = 0;
+                this.delay = delay;
+                this.active = false;
+                this.size = 8;
+            }
+            
+            update() {
+                if (this.delay > 0) {
+                    this.delay--;
+                    return;
+                }
+                
+                this.active = true;
+                this.progress += 0.02;
+                
+                if (this.progress <= 1) {
+                    this.x = this.startX + (this.endX - this.startX) * this.easeInOutQuad(this.progress);
+                    this.y = this.startY + (this.endY - this.startY) * this.easeInOutQuad(this.progress);
+                }
+            }
+            
+            easeInOutQuad(t) {
+                return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+            }
+            
+            draw() {
+                if (!this.active) return;
+                
+                ctx.save();
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+                
+                // Trail effect
+                ctx.save();
+                ctx.globalAlpha = 0.3;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x - 10, this.y, this.size * 0.6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        
+        function drawRoundRect(x, y, width, height, radius) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.arcTo(x + width, y, x + width, y + height, radius);
+            ctx.arcTo(x + width, y + height, x, y + height, radius);
+            ctx.arcTo(x, y + height, x, y, radius);
+            ctx.arcTo(x, y, x + width, y, radius);
+            ctx.closePath();
+        }
+
+        function drawComponent(comp, label, color, glowing = false) {
+            ctx.save();
+            
+            if (glowing) {
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 20;
+            }
+            
+            // Component box
+            ctx.fillStyle = color;
+            drawRoundRect(comp.x - comp.width/2, comp.y - comp.height/2, comp.width, comp.height, 10);
+            ctx.fill();
+            
+            // Border
+            ctx.strokeStyle = glowing ? '#fff' : '#333';
+            ctx.lineWidth = glowing ? 3 : 2;
+            drawRoundRect(comp.x - comp.width/2, comp.y - comp.height/2, comp.width, comp.height, 10);
+            ctx.stroke();
+            
+            ctx.restore();
+            
+            // Label
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, comp.x, comp.y - 10);
+            
+            // IP address
+            ctx.fillStyle = glowing ? '#fff' : '#ccc';
+            ctx.font = '12px Arial';
+            ctx.fillText(comp.ip, comp.x, comp.y + 8);
+        }
+        
+        function drawConnections() {
+            // Pod to Node
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(components.pod.x + components.pod.width/2, components.pod.y);
+            ctx.lineTo(components.node.x - components.node.width/2, components.node.y);
+            ctx.stroke();
+            
+            // Node to Internet
+            ctx.beginPath();
+            ctx.moveTo(components.node.x + components.node.width/2, components.node.y);
+            ctx.lineTo(components.internet.x - components.internet.width/2, components.internet.y);
+            ctx.stroke();
+            
+            ctx.setLineDash([]);
+        }
+        
+        function drawNATProcess(step) {
+            if (step >= 2) {
+                // NAT transformation visualization
+                const natX = (components.node.x + components.internet.x) / 2;
+                const natY = components.node.y - 80;
+                
+                ctx.save();
+                ctx.fillStyle = 'rgba(255, 193, 7, 0.9)';
+                drawRoundRect(natX - 60, natY - 20, 120, 40, 20);
+                ctx.fill();
+                
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('NAT Translation', natX, natY - 5);
+                ctx.fillText('10.244.0.5 → 192.168.1.100', natX, natY + 8);
+                ctx.restore();
+            }
+        }
+        
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio);
+            
+            drawConnections();
+            
+            // Draw components with appropriate highlighting
+            drawComponent(components.pod, 'Pod', '#4CAF50', animationStep >= 1);
+            drawComponent(components.node, 'Node', '#2196F3', animationStep >= 2);
+            drawComponent(components.internet, 'Internet', '#FF9800', animationStep >= 3);
+            
+            drawNATProcess(animationStep);
+            
+            // Update and draw particles
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+            
+            // Remove completed particles
+            particles = particles.filter(p => p.progress <= 1);
+            
+            animationId = requestAnimationFrame(animate);
+        }
+        
+        function startAnimation() {
+            resetAnimation();
+            
+            // Step 1: Pod to Node
+            setTimeout(() => {
+                animationStep = 1;
+                particles.push(new Particle(
+                    components.pod.x + components.pod.width/2, 
+                    components.pod.y,
+                    components.node.x - components.node.width/2, 
+                    components.node.y,
+                    '#4CAF50'
+                ));
+            }, 500);
+            
+            // Step 2: NAT process
+            setTimeout(() => {
+                animationStep = 2;
+                particles.push(new Particle(
+                    components.node.x + components.node.width/2, 
+                    components.node.y,
+                    components.internet.x - components.internet.width/2, 
+                    components.internet.y,
+                    '#2196F3'
+                ));
+            }, 2000);
+            
+            // Step 3: Response back
+            setTimeout(() => {
+                animationStep = 3;
+                particles.push(new Particle(
+                    components.internet.x - components.internet.width/2, 
+                    components.internet.y,
+                    components.node.x + components.node.width/2, 
+                    components.node.y,
+                    '#FF9800'
+                ));
+            }, 4000);
+            
+            setTimeout(() => {
+                particles.push(new Particle(
+                    components.node.x - components.node.width/2, 
+                    components.node.y,
+                    components.pod.x + components.pod.width/2, 
+                    components.pod.y,
+                    '#FF9800'
+                ));
+            }, 5500);
+        }
+        
+        function resetAnimation() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            animationStep = 0;
+            particles = [];
+            animate();
+        }
+        
+        // Add roundRect function for older browsers - Removed as we're using custom drawRoundRect
+        
+        // Initialize
+        resetAnimation();
+    </script>
+</body>
+</html>
