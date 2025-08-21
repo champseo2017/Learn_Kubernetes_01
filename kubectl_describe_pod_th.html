@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>kubectl describe pod — สรุปแบบอ่านง่าย</title>
+  <style>
+    /* ===== Base / Layout (โทนสะอาด อ่านง่าย) ===== */
+    :root { --bg:#fff; --fg:#111; --fg-2:#444; --muted:#e9edf1; --accent:#0f62fe; }
+    html,body{ height:100%; }
+    body{ margin:0; font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Arial,sans-serif; color:var(--fg); background:var(--bg); }
+    header,main,footer{ max-width:960px; margin:auto; padding:20px; }
+    header{ padding-top:28px; }
+    h1{ font-size:1.65rem; margin:0 0 6px; display:flex; align-items:center; gap:.6rem; }
+    h2{ font-size:1.25rem; margin:20px 0 10px; }
+    p.lead{ color:var(--fg-2); margin:6px 0 0; }
+
+    /* Title icon (SVG เล็ก) */
+    .k8s-badge{ width:28px; height:28px; display:inline-block; }
+
+    /* Cards / blocks */
+    .card{ background:#fff; border:1px solid var(--muted); border-radius:12px; padding:14px; }
+    .grid{ display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); }
+
+    /* Code + copy */
+    pre{ margin:0; overflow:auto; background:#0b1220; color:#f1f5ff; padding:12px 14px; border-radius:10px; }
+    code{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.95rem; }
+    .cmdbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .btn{ appearance:none; border:1px solid #0b1220; background:#0b1220; color:#fff; border-radius:10px; padding:8px 12px; font-weight:600; cursor:pointer; }
+    .btn:focus{ outline:3px solid var(--accent); outline-offset:2px; }
+
+    /* Table (สรุปคีย์-ค่า) */
+    table{ width:100%; border-collapse:collapse; font-size:.95rem; }
+    th,td{ text-align:left; padding:8px 10px; border-bottom:1px dashed var(--muted); vertical-align:top; }
+    th{ width:36%; color:#000; font-weight:700; }
+
+    /* Canvas diagram wrapper */
+    .diagram{ border:1px solid var(--muted); border-radius:12px; padding:12px; background:#fafbfc; }
+    canvas{ width:100%; height:220px; display:block; }
+    .hint{ font-size:.9rem; color:var(--fg-2); margin:8px 2px 0; }
+
+    /* Toast (แจ้งเตือนสั้นๆ) */
+    .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(8px); background:#111; color:#fff; padding:8px 12px; border-radius:999px; opacity:0; transition:.22s ease; }
+    .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+    footer{ color:var(--fg-2); font-size:.9rem; }
+    a{ color:var(--accent); text-decoration:none; }
+    a:focus, a:hover{ text-decoration:underline; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title" role="group" aria-label="หัวเรื่อง">
+      <!-- SVG ไอคอนเล็ก: โหนด-พ็อด (เรียบง่าย) -->
+      <svg class="k8s-badge" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="2" y="6" width="12" height="12" rx="3" fill="#0f62fe"/>
+        <circle cx="22" cy="10" r="4" fill="#8bc34a"/>
+        <path d="M14 12 H18 L20 10" stroke="#111" stroke-width="2" fill="none"/>
+        <rect x="18" y="16" width="12" height="10" rx="3" fill="#ffb703"/>
+      </svg>
+      <h1>ตรวจสอบรายละเอียด <code>Pod</code> ด้วย <code>kubectl describe</code></h1>
+    </div>
+    <p class="lead">คำสั่ง <code>kubectl describe</code> แสดงข้อมูลเชิงลึกของ Pod ละเอียดยิ่งกว่า <code>kubectl get pods</code> เหมาะกับการ debug และทำความเข้าใจสถานะใน Kubernetes</p>
+  </header>
+
+  <main>
+    <section aria-label="เหตุผลและภาพรวม">
+      <div class="grid">
+        <article class="card">
+          <h2>ทำไมต้องใช้ <code>describe</code>?</h2>
+          <ul>
+            <li>เห็นรายละเอียดสำคัญ: ชื่อ, namespace, node, IP, เวลาเริ่ม</li>
+            <li>ตรวจ labels เพื่อจัดกลุ่ม/เลือก pods</li>
+            <li>ดู <strong>Conditions</strong> เช่น <em>Ready=True</em> เพื่อประเมินความพร้อมรับทราฟฟิก</li>
+            <li>เจาะลึก <em>containers</em>, <em>volumes</em>, และ <em>events</em> สำหรับการแก้ปัญหา</li>
+          </ul>
+        </article>
+        <article class="card" aria-label="คำสั่งตัวอย่าง">
+          <h2>คำสั่ง</h2>
+          <div class="cmdbar" role="group" aria-label="แถบคำสั่งคัดลอก">
+            <pre aria-label="ตัวอย่างคำสั่ง"><code>$ kubectl describe pod kubia-hczji</code></pre>
+            <button class="btn" id="copyCmd" aria-label="คัดลอกคำสั่ง kubectl describe">คัดลอก</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section aria-label="ผลลัพธ์ตัวอย่าง">
+      <h2>ผลลัพธ์ที่ได้ (สรุปคีย์/ค่า)</h2>
+      <div class="grid">
+        <article class="card">
+          <table aria-label="สรุปข้อมูล Pod">
+            <tbody id="pod-table"><!-- render โดย JS --></tbody>
+          </table>
+        </article>
+        <article class="card">
+          <h3 style="margin-top:0">Conditions</h3>
+          <table aria-label="ตารางเงื่อนไขของ Pod">
+            <thead>
+              <tr><th scope="col">Type</th><th scope="col">Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Ready</th><td>True</td></tr>
+            </tbody>
+          </table>
+          <ul>
+            <li><strong>Containers:</strong> รายละเอียด image/ports/env ฯลฯ</li>
+            <li><strong>Volumes:</strong> รายการที่ mount อยู่</li>
+            <li><strong>Events:</strong> ลำดับเหตุการณ์ที่เกิดขึ้นกับ Pod</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section aria-label="ไดอะแกรมแบบย่อ">
+      <h2>ไดอะแกรมการไหล (Pod → Node → Internet)</h2>
+      <div class="diagram">
+        <!-- Canvas 1 ชิ้น: วาดแผนภาพสั้นๆ -->
+        <canvas id="flow" role="img" aria-label="แผนภาพ: Pod ถูก schedule ไปยัง Node และออกอินเทอร์เน็ตผ่าน NAT"></canvas>
+      </div>
+      <p class="hint">เส้นทึบ = การเชื่อมต่อหลัก, เส้นประ = กลุ่ม Events</p>
+    </section>
+  </main>
+
+  <footer>
+    สร้างเพื่อสรุปแนวคิดการใช้ <code>kubectl describe pod</code> ให้เข้าใจเร็ว (HTML5 + CSS3 + ES2020) — ไม่ใช้ไลบรารีภายนอก
+  </footer>
+
+  <script>
+    // ===== Utilities (ฟังก์ชันช่วยทั่วไป) =====
+    const qs = (s, el=document) => el.querySelector(s); // ค้นหา element เดียว
+    const on = (el, ev, fn) => el.addEventListener(ev, fn); // ผูกอีเวนต์
+
+    // คัดลอกข้อความไปคลิปบอร์ด
+    async function copy(text){
+      try{ await navigator.clipboard.writeText(text); toast('คัดลอกแล้ว'); }
+      catch{ fallbackCopy(text); }
+    }
+    function fallbackCopy(text){
+      const ta=document.createElement('textarea'); ta.value=text; document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('คัดลอกแล้ว');
+    }
+    function toast(msg){
+      const t=document.createElement('div'); t.className='toast'; t.setAttribute('role','status'); t.textContent=msg; document.body.append(t);
+      requestAnimationFrame(()=>t.classList.add('show'));
+      setTimeout(()=>t.classList.remove('show'),1600); setTimeout(()=>t.remove(),2000);
+    }
+
+    // Escape HTML (กัน XSS สำหรับค่าที่นำมาแสดง)
+    function escapeHtml(s){
+      return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]));
+    }
+
+    // เรนเดอร์ตารางคีย์/ค่า
+    function renderKeyValTable(tbody, rows){
+      tbody.innerHTML = rows.map(([k,v])=>`<tr><th scope="row">${k}</th><td>${escapeHtml(v)}</td></tr>`).join('');
+    }
+
+    // วาด Canvas แผนภาพการไหล (Pod → Node → Internet)
+    function drawFlow(canvas){
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1; // ให้คมบนจอเรตินา
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.floor(rect.width * dpr);
+      canvas.height = Math.floor(rect.height * dpr);
+      ctx.scale(dpr, dpr);
+
+      ctx.clearRect(0,0,rect.width,rect.height);
+      ctx.lineWidth = 2; ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
+
+      // ฟังก์ชันวาดพื้นฐาน
+      const rounded = (x,y,w,h,r=10)=>{ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); ctx.stroke(); };
+      const label = (x,y,text)=>{ ctx.font='14px system-ui,-apple-system,Segoe UI,Roboto,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(text,x,y); };
+      const arrow = (x1,y1,x2,y2)=>{ const a=Math.atan2(y2-y1,x2-x1); ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); const s=6; ctx.beginPath(); ctx.moveTo(x2,y2); ctx.lineTo(x2-s*Math.cos(a-Math.PI/6), y2-s*Math.sin(a-Math.PI/6)); ctx.lineTo(x2-s*Math.cos(a+Math.PI/6), y2-s*Math.sin(a+Math.PI/6)); ctx.closePath(); ctx.fill(); };
+
+      // ตำแหน่งองค์ประกอบ
+      const pod = {x:20, y:70, w:130, h:60};
+      const node = {x:210, y:50, w:180, h:100};
+      const net = {x:430, y:30, w:180, h:140};
+
+      // วาดกรอบ
+      rounded(pod.x, pod.y, pod.w, pod.h);
+      label(pod.x+pod.w/2, pod.y+pod.h/2, 'Pod: kubia-hczji');
+
+      rounded(node.x, node.y, node.w, node.h);
+      label(node.x+node.w/2, node.y+30, 'Node');
+      label(node.x+node.w/2, node.y+52, 'gke-kubia-...');
+      label(node.x+node.w/2, node.y+74, '10.132.0.3');
+
+      ctx.setLineDash([6,4]); rounded(net.x, net.y, net.w, net.h); ctx.setLineDash([]);
+      label(net.x+net.w/2, net.y+20, 'Internet');
+
+      // เส้นเชื่อมและคำอธิบาย
+      arrow(pod.x+pod.w, pod.y+pod.h/2, node.x, node.y+node.h/2); label(pod.x+pod.w+30, pod.y+pod.h/2-15, 'schedule');
+      arrow(node.x+node.w, node.y+node.h/2, net.x, net.y+net.h/2); label(node.x+node.w-20, node.y+node.h/2-15, 'NAT egress');
+
+      // กล่อง Events (เส้นประ)
+      ctx.setLineDash([3,3]); ctx.strokeRect(pod.x, pod.y+pod.h+14, pod.w, 38); ctx.setLineDash([]);
+      label(pod.x+pod.w/2, pod.y+pod.h+33, 'Events');
+    }
+
+    // ===== Init =====
+    document.addEventListener('DOMContentLoaded', () => {
+      // ข้อมูลตัวอย่างจากคำสั่ง describe
+      const rows = [
+        ['Name','kubia-hczji'],
+        ['Namespace','default'],
+        ['Node','gke-kubia-85f6-node-vs9f / 10.132.0.3'],
+        ['Start Time','Fri, 29 Apr 2016 14:12:33 +0200'],
+        ['Labels','run=kubia'],
+        ['Status','Running'],
+        ['IP','10.1.0.2'],
+        ['Controllers','ReplicationController/kubia']
+      ];
+      renderKeyValTable(qs('#pod-table'), rows); // เรนเดอร์ตารางสรุป
+
+      on(qs('#copyCmd'), 'click', () => copy('kubectl describe pod kubia-hczji')); // ปุ่มคัดลอกคำสั่ง
+
+      const canvas = qs('#flow');
+      const reflow = () => drawFlow(canvas); // วาดครั้งแรก + ตอนเปลี่ยนขนาด
+      reflow();
+      let tid; window.addEventListener('resize', () => { clearTimeout(tid); tid = setTimeout(reflow, 120); });
+    });
+  </script>
+</body>
+</html>
