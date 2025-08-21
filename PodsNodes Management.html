@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>สรุป Kubernetes: ตรวจสอบ Pod บน Node</title>
+    <style>
+      /* CSS3 สำหรับสไตล์พื้นฐานและ animation */
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f9;
+        color: #333;
+        margin: 0;
+        padding: 20px;
+        line-height: 1.6;
+      }
+      h1,
+      h2 {
+        color: #2c3e50;
+      }
+      .section {
+        margin-bottom: 40px;
+        padding: 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+      .pod-node-diagram {
+        display: flex;
+        justify-content: center;
+        margin: 20px 0;
+      }
+      .code-block {
+        background: #272822;
+        color: #f8f8f2;
+        padding: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        overflow-x: auto;
+      }
+      button {
+        background: #3498db;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.3s ease;
+      }
+      button:hover {
+        background: #2980b9;
+      }
+      /* CSS Animation สำหรับ pod scheduling simulation */
+      @keyframes schedulePod {
+        0% {
+          transform: translateY(0);
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(50px);
+          opacity: 0.5;
+        }
+      }
+      .pod-animate {
+        animation: schedulePod 2s ease-in-out;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>สรุป Kubernetes: การตรวจสอบ Pod บน Node ไหน</h1>
+
+    <div class="section">
+      <h2>แนวคิดหลัก</h2>
+      <p>
+        ใน Kubernetes, Pod จะถูก schedule ไปยัง Node ที่มี CPU/Memory เพียงพอ
+        ไม่สำคัญว่า Node ไหน เพราะ:
+      </p>
+      <ul>
+        <li>ทุก Pod มี Environment OS เดียวกัน</li>
+        <li>Pod มี IP เอง สามารถสื่อสารข้าม Node ได้</li>
+        <li>Resources ถูก allocate ตาม request ไม่ขึ้นกับ Node</li>
+      </ul>
+      <p>คลิกปุ่มด้านล่างเพื่อ simulate การ schedule Pod</p>
+      <button id="simulateBtn">Simulate Pod Scheduling</button>
+      <canvas
+        id="simulationCanvas"
+        width="600"
+        height="200"
+        style="border: 1px solid #ccc; display: block; margin: 20px auto"
+      ></canvas>
+    </div>
+
+    <div class="section">
+      <h2>แสดง Pod IP และ Node</h2>
+      <p>
+        ปกติ <code>kubectl get pods</code> ไม่แสดง Node/IP แต่ใช้
+        <code>-o wide</code> เพื่อดูเพิ่ม:
+      </p>
+      <pre class="code-block">
+$ kubectl get pods -o wide
+NAME        READY   STATUS    RESTARTS   AGE   IP         NODE
+kubia-hczji 1/1     Running   0          7s    10.1.0.2   gke-kubia-85...
+        </pre
+      >
+      <p>มีประโยชน์สำหรับ debug network หรือตรวจ deployment</p>
+    </div>
+
+    <div class="section">
+      <h2>ไดอะแกรม SVG: Cluster ตัวอย่าง</h2>
+      <p>ใช้ SVG เพื่อวาด Node และ Pod แบบง่าย</p>
+      <div class="pod-node-diagram">
+        <svg
+          width="600"
+          height="300"
+          viewBox="0 0 600 300"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <!-- Node 1 -->
+          <rect
+            x="50"
+            y="50"
+            width="200"
+            height="200"
+            fill="#e0f7fa"
+            stroke="#00acc1"
+            stroke-width="2"
+          />
+          <text
+            x="150"
+            y="40"
+            text-anchor="middle"
+            font-size="16"
+            fill="#00acc1"
+          >
+            Node 1
+          </text>
+          <!-- Pod on Node 1 -->
+          <circle
+            id="pod1"
+            cx="150"
+            cy="150"
+            r="40"
+            fill="#4caf50"
+            stroke="#388e3c"
+            stroke-width="2"
+            class="pod"
+          />
+          <text
+            x="150"
+            y="155"
+            text-anchor="middle"
+            font-size="12"
+            fill="white"
+          >
+            Pod A
+          </text>
+
+          <!-- Node 2 -->
+          <rect
+            x="350"
+            y="50"
+            width="200"
+            height="200"
+            fill="#e0f7fa"
+            stroke="#00acc1"
+            stroke-width="2"
+          />
+          <text
+            x="450"
+            y="40"
+            text-anchor="middle"
+            font-size="16"
+            fill="#00acc1"
+          >
+            Node 2
+          </text>
+          <!-- Pod on Node 2 -->
+          <circle
+            id="pod2"
+            cx="450"
+            cy="150"
+            r="40"
+            fill="#4caf50"
+            stroke="#388e3c"
+            stroke-width="2"
+            class="pod"
+          />
+          <text
+            x="450"
+            y="155"
+            text-anchor="middle"
+            font-size="12"
+            fill="white"
+          >
+            Pod B
+          </text>
+
+          <!-- Connection line -->
+          <line
+            x1="250"
+            y1="150"
+            x2="350"
+            y2="150"
+            stroke="#757575"
+            stroke-width="2"
+            stroke-dasharray="5,5"
+          />
+          <text
+            x="300"
+            y="140"
+            text-anchor="middle"
+            font-size="12"
+            fill="#757575"
+          >
+            Communication
+          </text>
+        </svg>
+      </div>
+      <div
+        id="podInfo"
+        style="text-align: center; margin-top: 10px; font-weight: bold"
+      ></div>
+    </div>
+
+    <script>
+      // JavaScript ES2020 สำหรับ interactivity
+      // SVG Interaction
+      const pods = document.querySelectorAll(".pod");
+      const podInfo = document.getElementById("podInfo");
+
+      pods.forEach((pod) => {
+        pod.addEventListener("click", (event) => {
+          const podName = event.target.nextElementSibling.textContent;
+          const node = event.target
+            .closest("svg")
+            .querySelector(
+              `text[fill="#00acc1"]:nth-of-type(${pod.id === "pod1" ? 1 : 2})`
+            ).textContent;
+          const ip = pod.id === "pod1" ? "10.1.0.2" : "10.1.0.3";
+          podInfo.textContent = `Pod: ${podName}, Node: ${node}, IP: ${ip}`;
+          // Add CSS animation class
+          event.target.classList.add("pod-animate");
+          setTimeout(() => event.target.classList.remove("pod-animate"), 2000);
+        });
+      });
+
+      // Canvas Simulation with ES2020 features (async/await for demo)
+      const simulateBtn = document.getElementById("simulateBtn");
+      const canvas = document.getElementById("simulationCanvas");
+      const ctx = canvas.getContext("2d");
+
+      simulateBtn.addEventListener("click", async () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#e0f7fa";
+        ctx.fillRect(50, 50, 150, 100); // Node 1
+        ctx.fillRect(400, 50, 150, 100); // Node 2
+        ctx.font = "16px Arial";
+        ctx.fillStyle = "#00acc1";
+        ctx.fillText("Node 1", 100, 40);
+        ctx.fillText("Node 2", 450, 40);
+
+        // Simulate scheduling with animation
+        for (let i = 0; i < 3; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 1000)); // ES2020 async
+          const x = Math.random() > 0.5 ? 100 : 450;
+          ctx.beginPath();
+          ctx.arc(x, 100, 20, 0, 2 * Math.PI);
+          ctx.fillStyle = "#4caf50";
+          ctx.fill();
+          ctx.fillStyle = "white";
+          ctx.font = "12px Arial";
+          ctx.fillText(`Pod ${i + 1}`, x - 15, 105);
+        }
+      });
+    </script>
+  </body>
+</html>
