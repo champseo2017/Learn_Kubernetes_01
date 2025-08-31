@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>สรุป: การดูแล Pods ให้มีสถานะ Healthy</title>
+    <style>
+        /* --- ตัวแปรกลาง --- */
+        :root {
+            --bg-color: #f4f7fa;
+            --text-color: #334155;
+            --primary-color: #2563eb;
+            --card-bg: #ffffff;
+            --border-color: #e2e8f0;
+            --code-bg: #f1f5f9;
+            --heading-color: #0f172a;
+            --success-color: #16a34a;
+            --danger-color: #dc2626;
+            --warning-color: #f59e0b;
+            --font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* --- Reset และค่าเริ่มต้น --- */
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family);
+            line-height: 1.8;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        /* --- โครงสร้างหลัก --- */
+        .container {
+            width: 100%;
+            max-width: 960px;
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        header {
+            padding: 2.5rem;
+            background-color: var(--heading-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            border-bottom: 4px solid var(--primary-color);
+        }
+        
+        header svg {
+            flex-shrink: 0;
+        }
+
+        main {
+            padding: 2.5rem;
+        }
+        
+        section {
+            margin-bottom: 3rem;
+        }
+        
+        section:last-child {
+            margin-bottom: 0;
+        }
+
+        footer {
+            text-align: center;
+            padding: 1.5rem;
+            font-size: 0.9rem;
+            color: #64748b;
+            background-color: #f8fafc;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* --- องค์ประกอบตัวอักษร --- */
+        h1 {
+            margin: 0;
+            font-size: 2.25rem;
+            font-weight: 700;
+        }
+
+        h2 {
+            font-size: 1.75rem;
+            color: var(--heading-color);
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 0.75rem;
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+        }
+        
+        p, li {
+            font-size: 1.05rem;
+        }
+
+        code {
+            font-family: 'Fira Code', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            background-color: var(--code-bg);
+            padding: 0.2em 0.5em;
+            border-radius: 6px;
+            font-size: 0.9em;
+            border: 1px solid var(--border-color);
+            color: var(--primary-color);
+        }
+        
+        strong {
+           color: var(--heading-color);
+           font-weight: 600;
+        }
+        
+        .highlight {
+            background-color: #eff6ff;
+            padding: 1.5rem;
+            border-left: 4px solid var(--primary-color);
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+
+        /* --- ส่วนเปรียบเทียบปัญหา --- */
+        .problem-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .problem-card {
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        
+        .problem-card h3 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .problem-card.success h3 { color: var(--success-color); }
+        .problem-card.warning h3 { color: var(--warning-color); }
+        
+        .problem-card ul {
+            padding-left: 1.5rem;
+            color: #475569;
+        }
+        
+        /* --- Canvas --- */
+        canvas {
+            display: block;
+            width: 100%;
+            margin: 2rem auto 0;
+            border-radius: 12px;
+            background-color: #f8fafc;
+            border: 1px solid var(--border-color);
+        }
+        
+        /* --- Responsive --- */
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            main, header { padding: 1.5rem; }
+            h1 { font-size: 1.8rem; }
+            h2 { font-size: 1.5rem; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div>
+                 <h1>การดูแล Pods ให้มีสถานะ Healthy</h1>
+            </div>
+        </header>
+
+        <main>
+            <section id="intro">
+                <h2>หน้าที่ของ Kubernetes และ Kubelet</h2>
+                <p>
+                    หนึ่งในข้อดีและหน้าที่หลักของ <strong>Kubernetes</strong> คือการดูแลให้ <code>containers</code> ของเราทำงานอยู่ตลอดเวลาใน <code>cluster</code> เมื่อเราสร้าง <code>Pod</code> resource, Kubernetes จะเลือก <code>worker node</code> ที่เหมาะสมให้ และ <strong><code>Kubelet</code></strong> (ซึ่งเป็น agent ที่รันอยู่บนแต่ละ node) จะทำหน้าที่รันและคอยดูแล <code>containers</code> ใน Pod นั้นให้ทำงานอยู่เสมอ
+                </p>
+            </section>
+            
+            <section id="self-healing">
+                <h2>การซ่อมแซมตัวเอง (Self-Healing)</h2>
+                <p>
+                    หาก <code>process</code> หลักของ <code>container</code> เกิดล่ม (crash) ขึ้นมา ไม่ว่าจะเกิดจาก bug หรือเหตุผลอื่น, <strong>Kubelet จะทำการรีสตาร์ท <code>container</code> นั้นให้โดยอัตโนมัติ</strong> นี่คือความสามารถในการซ่อมแซมตัวเองเบื้องต้นที่ Kubernetes มอบให้ ทำให้แอปพลิเคชันมีความทนทาน (resilient) มากขึ้น
+                </p>
+                <div class="problem-grid">
+                    <article class="problem-card success">
+                        <h3>
+                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 4L12 14.01l-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                             กรณี Process ล่ม (Crash)
+                        </h3>
+                        <p>Kubelet ตรวจจับได้ว่า Process หยุดทำงานและจะทำการรีสตาร์ท Container ใหม่ทันที</p>
+                    </article>
+                     <article class="problem-card warning">
+                        <h3>
+                           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 9v4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                           ปัญหา: Process ไม่ล่ม แต่ไม่ทำงาน
+                        </h3>
+                        <p>แต่บางครั้ง แอปพลิเคชันก็หยุดทำงานไปเฉยๆ โดยที่ <code>process</code> ไม่ได้ล่ม เช่น:</p>
+                        <ul>
+                            <li>เกิด <code>Memory Leak</code> จนไม่สามารถทำงานต่อได้</li>
+                            <li>ติดอยู่ใน <code>Infinite Loop</code> หรือ <code>Deadlock</code></li>
+                        </ul>
+                         <p>ในสถานการณ์เหล่านี้ Kubelet จะมองว่า Container ยัง "ทำงาน" อยู่และจะไม่ทำอะไร</p>
+                    </article>
+                </div>
+            </section>
+            
+            <section id="solution">
+                <h2>ทางออก: การตรวจสอบจากภายนอก</h2>
+                <div class="highlight">
+                     <p>
+                        เพื่อให้แน่ใจว่าแอปพลิเคชันจะถูกรีสตาร์ทในกรณีที่ค้างหรือไม่ตอบสนอง เราจำเป็นต้องมี <strong>วิธีการตรวจสอบสถานะ (health) ของแอปพลิเคชันจากภายนอก</strong> แทนที่จะรอให้แอปรายงานปัญหาจากภายในตัวเอง ซึ่งเป็นที่มาของ Liveness Probes
+                    </p>
+                </div>
+                <canvas id="healthCheckDiagram" width="800" height="300" aria-label="ไดอะแกรมแสดงการตรวจสอบสถานะ Container จาก Kubelet"></canvas>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        /**
+         * Utility functions สำหรับวาดบน Canvas
+         * ฟังก์ชันเหล่านี้เป็น pure functions ที่รับ context และ parameters
+         * เพื่อวาดรูปทรงต่างๆ โดยไม่มี side-effects
+         */
+
+        // --- ค่าคงที่สำหรับ Styles ---
+        const STYLES = {
+            KUBELET: { fill: '#f0fdf4', stroke: '#22c55e', text: '#15803d' },
+            POD: { fill: '#fafafa', stroke: '#d4d4d8', text: '#52525b' },
+            CONTAINER_HEALTHY: { fill: '#eff6ff', stroke: '#3b82f6', text: '#1e40af' },
+            CONTAINER_UNHEALTHY: { fill: '#fff1f2', stroke: '#f43f5e', text: '#be123c' },
+            ARROW_HEALTHY: '#22c55e',
+            ARROW_UNHEALTHY: '#ef4444',
+            TEXT_NORMAL: '#3f3f46',
+        };
+
+        /**
+         * วาดกล่องสี่เหลี่ยมพร้อมข้อความ
+         * @param {CanvasRenderingContext2D} ctx - Context ของ canvas
+         * @param {{x: number, y: number, w: number, h: number, r: number}} rect - ขนาดและตำแหน่ง
+         * @param {string} label - ข้อความหลัก
+         * @param {string} subLabel - ข้อความรอง
+         * @param {{fill: string, stroke: string, text: string}} style - Object สี
+         */
+        const drawBox = (ctx, rect, label, subLabel, style) => {
+            const { x, y, w, h, r } = rect;
+            ctx.fillStyle = style.fill;
+            ctx.strokeStyle = style.stroke;
+            ctx.lineWidth = 1.5;
+
+            // วาดสี่เหลี่ยมโค้งมน
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // วาดข้อความ
+            ctx.fillStyle = style.text;
+            ctx.font = 'bold 14px var(--font-family)';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, x + w / 2, y + h / 2 - 5);
+            
+            ctx.font = '12px var(--font-family)';
+            ctx.fillText(subLabel, x + w / 2, y + h / 2 + 15);
+        };
+        
+        /**
+         * วาดลูกศร
+         * @param {CanvasRenderingContext2D} ctx - Context ของ canvas
+         * @param {{x: number, y: number}} from - จุดเริ่มต้น
+         * @param {{x: number, y: number}} to - จุดสิ้นสุด
+         * @param {string} color - สีของลูกศร
+         * @param {boolean} dashed - เป็นเส้นประหรือไม่
+         */
+        const drawArrow = (ctx, from, to, color, dashed = true) => {
+            const headlen = 10;
+            const angle = Math.atan2(to.y - from.y, to.x - from.x);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.setLineDash(dashed ? [5, 5] : []);
+            
+            ctx.beginPath();
+            ctx.moveTo(from.x, from.y);
+            ctx.lineTo(to.x, to.y);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(to.x, to.y);
+            ctx.lineTo(to.x - headlen * Math.cos(angle - Math.PI / 6), to.y - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(to.x - headlen * Math.cos(angle + Math.PI / 6), to.y - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.setLineDash([]);
+        };
+
+        /**
+         * ฟังก์ชันหลักสำหรับวาดไดอะแกรมทั้งหมด
+         * @param {HTMLCanvasElement} canvasEl - Element ของ canvas
+         */
+        const renderHealthCheckDiagram = (canvasEl) => {
+            if (!canvasEl || !canvasEl.getContext) return;
+            const ctx = canvasEl.getContext('2d');
+            const { width, height } = canvasEl;
+            
+            // วาด Kubelet
+            drawBox(ctx, {x: 30, y: height/2 - 40, w: 120, h: 80, r: 8}, 'Kubelet', '(External Check)', STYLES.KUBELET);
+
+            // วาด Pod และ Containers
+            const podX = 220;
+            const podW = width - podX - 30;
+            drawBox(ctx, {x: podX, y: 30, w: podW, h: height - 60, r: 12}, '', '', STYLES.POD);
+            ctx.fillStyle = STYLES.POD.text;
+            ctx.font = 'bold 16px var(--font-family)';
+            ctx.textAlign = 'left';
+            ctx.fillText('Pod', podX + 20, 60);
+
+            // -- Scenario 1: Healthy --
+            const containerHealthyY = 80;
+            drawBox(ctx, {x: podX + 50, y: containerHealthyY, w: 180, h: 60, r: 8}, 'Container A', '(Healthy)', STYLES.CONTAINER_HEALTHY);
+            drawArrow(ctx, {x: 150, y: height/2}, {x: podX + 50, y: containerHealthyY + 30}, STYLES.ARROW_HEALTHY);
+            ctx.fillStyle = STYLES.ARROW_HEALTHY;
+            ctx.fillText('Probe OK', 210, height/2 + 20);
+
+            // -- Scenario 2: Unhealthy --
+            const containerUnhealthyY = 180;
+            drawBox(ctx, {x: podX + podW - 230, y: containerUnhealthyY, w: 180, h: 60, r: 8}, 'Container B', '(Unresponsive)', STYLES.CONTAINER_UNHEALTHY);
+            drawArrow(ctx, {x: 150, y: height/2}, {x: podX + podW - 230, y: containerUnhealthyY + 30}, STYLES.ARROW_UNHEALTHY);
+            ctx.fillStyle = STYLES.ARROW_UNHEALTHY;
+            ctx.fillText('Probe Fails -> Restart!', 210, height/2 - 10);
+        };
+        
+        // --- การทำงานหลักหลัง DOM โหลดเสร็จ ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('healthCheckDiagram');
+            renderHealthCheckDiagram(canvas);
+        });
+    </script>
+</body>
+</html>

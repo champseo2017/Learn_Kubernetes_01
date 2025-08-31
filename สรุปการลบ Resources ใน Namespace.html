@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>สรุปการลบ Resources ใน Namespace</title>
+    <style>
+        /* --- ตัวแปรกลาง --- */
+        :root {
+            --bg-color: #f8f9fa;
+            --text-color: #212529;
+            --primary-color: #0d6efd;
+            --code-bg: #e9ecef;
+            --border-color: #dee2e6;
+            --card-bg: #ffffff;
+            --danger-color: #dc3545;
+            --success-color: #198754;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* --- Reset และค่าเริ่มต้น --- */
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family);
+            line-height: 1.6;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        /* --- โครงสร้างหลัก --- */
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        header {
+            padding: 1.5rem 2rem;
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        main {
+            padding: 2rem;
+        }
+        
+        section {
+            margin-bottom: 2rem;
+        }
+
+        footer {
+            text-align: center;
+            padding: 1rem;
+            font-size: 0.875rem;
+            color: #6c757d;
+            border-top: 1px solid var(--border-color);
+        }
+
+
+        /* --- องค์ประกอบตัวอักษร --- */
+        h1 {
+            margin: 0;
+            font-size: 1.75rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 0.5rem;
+            margin-top: 0;
+        }
+        
+        p, li {
+            font-size: 1rem;
+        }
+
+        code {
+            font-family: monospace;
+            background-color: var(--code-bg);
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+
+        /* --- บล็อกโค้ด --- */
+        .code-block {
+            position: relative;
+            background-color: #282c34;
+            color: #abb2bf;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+
+        .code-block pre {
+            margin: 0;
+        }
+
+        .code-block code {
+            background-color: transparent;
+            padding: 0;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background-color: #444c56;
+            color: #abb2bf;
+            border: 1px solid #555e68;
+            border-radius: 5px;
+            padding: 0.5rem 0.75rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: background-color 0.2s;
+        }
+
+        .copy-btn:hover {
+            background-color: #555e68;
+        }
+        .copy-btn:active {
+            transform: translateY(1px);
+        }
+
+        /* --- องค์ประกอบอื่นๆ --- */
+        .warning-box {
+            display: flex;
+            align-items: start;
+            gap: 1rem;
+            background-color: #fff3cd;
+            color: #664d03;
+            border: 1px solid #ffecb5;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1.5rem;
+        }
+
+        .warning-box svg {
+            flex-shrink: 0;
+            margin-top: 0.25rem;
+        }
+        
+        ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        ul li {
+            padding-left: 1.5rem;
+            position: relative;
+            margin-bottom: 0.5rem;
+        }
+        ul li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: var(--primary-color);
+            font-weight: bold;
+        }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            max-width: 500px;
+            margin: 1.5rem auto 0;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>การลบ Resources ใน Namespace ของ Kubernetes</h1>
+        </header>
+
+        <main>
+            <section id="summary">
+                <h2>สรุปการลบ Resources เกือบทั้งหมด</h2>
+                <p>เราสามารถลบ <code>ReplicationController</code>, <code>pods</code> และ <code>Services</code> ทั้งหมดที่สร้างขึ้นมาได้ด้วยคำสั่งเดียว ซึ่งจะทำการลบ resources ทุกประเภทที่อยู่ใน namespace ปัจจุบัน</p>
+                
+                <p>ส่วนประกอบของคำสั่ง <code>kubectl delete all --all</code>:</p>
+                <ul>
+                    <li><code>all</code> (ตัวแรก): ระบุว่าเราต้องการลบ resources <strong>ทุกประเภท</strong></li>
+                    <li><code>--all</code> (option): ระบุว่าเราต้องการลบ <strong>instance ทั้งหมด</strong> ของ resources เหล่านั้น</li>
+                </ul>
+
+                <div class="warning-box">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M10.29 3.86L1.82 18C1.63977 18.3275 1.63977 18.7225 1.82 19.05C2.00023 19.3775 2.33239 19.5862 2.69 19.58H21.31C21.6676 19.5862 21.9998 19.3775 22.18 19.05C22.3602 18.7225 22.3602 18.3275 22.18 18L13.71 3.86C13.5264 3.53535 13.2017 3.32918 12.85 3.32918C12.4983 3.32918 12.1736 3.53535 11.99 3.86ZM12 16C11.45 16 11 15.55 11 15V13C11 12.45 11.45 12 12 12C12.55 12 13 12.45 13 13V15C13 15.55 12.55 16 12 16ZM13 10H11V8H13V10Z" fill="currentColor"/>
+                    </svg>
+                    <div>
+                        <strong>ข้อควรระวัง:</strong> การใช้ <code>all</code> ไม่ได้ลบทุกอย่าง! Resources บางอย่าง เช่น <code>Secrets</code> จะยังคงอยู่ และ <code>kubernetes Service</code> ที่เป็น default ก็จะถูกสร้างขึ้นมาใหม่โดยอัตโนมัติ
+                    </div>
+                </div>
+            </section>
+            
+            <section id="diagram">
+                 <h2>ภาพประกอบการทำงาน</h2>
+                 <canvas id="deleteDiagram" width="600" height="200" aria-label="ไดอะแกรมแสดงผลของคำสั่ง kubectl delete all --all"></canvas>
+            </section>
+
+            <section id="example">
+                <h2>ตัวอย่างคำสั่ง</h2>
+                <div class="code-block">
+                    <button class="copy-btn" aria-label="คัดลอกคำสั่ง">คัดลอก</button>
+                    <pre><code id="command-text"># คำสั่งสำหรับลบ resources ทั้งหมดใน namespace ปัจจุบัน
+kubectl delete all --all
+
+# ผลลัพธ์ที่คาดว่าจะได้รับ (ชื่ออาจแตกต่างกันไป)
+pod "kubia-09as0" deleted
+replicationcontroller "kubia" deleted
+service "kubernetes" deleted
+service "kubia-http" deleted</code></pre>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // --- ฟังก์ชัน Utility ---
+
+        /**
+         * ฟังก์ชันสำหรับคัดลอกข้อความไปยัง clipboard
+         * @param {string} text - ข้อความที่ต้องการคัดลอก
+         * @param {HTMLElement} buttonElement - element ของปุ่มที่ถูกคลิก
+         */
+        const copyToClipboard = (text, buttonElement) => {
+            navigator.clipboard.writeText(text).then(() => {
+                // สำเร็จ: เปลี่ยนข้อความปุ่มชั่วคราว
+                const originalText = buttonElement.textContent;
+                buttonElement.textContent = 'คัดลอกแล้ว!';
+                setTimeout(() => {
+                    buttonElement.textContent = originalText;
+                }, 2000);
+            }).catch(err => {
+                // ล้มเหลว: แสดงข้อผิดพลาดใน console
+                console.error('ไม่สามารถคัดลอกข้อความได้: ', err);
+            });
+        };
+        
+        // --- ฟังก์ชัน Renderer สำหรับ Canvas ---
+
+        /**
+         * วาดกล่องข้อความบน canvas
+         * @param {CanvasRenderingContext2D} ctx - Context ของ canvas
+         * @param {number} x - ตำแหน่งแกน X
+         * @param {number} y - ตำแหน่งแกน Y
+         * @param {string} text - ข้อความในกล่อง
+         * @param {string} color - สีของเส้นขอบ
+         */
+        const drawResourceBox = (ctx, x, y, text, color) => {
+            const width = 80;
+            const height = 40;
+            ctx.strokeStyle = color;
+            ctx.fillStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, width, height);
+            ctx.fillStyle = '#333';
+            ctx.fillText(text, x + width / 2, y + height / 2 + 5);
+        };
+
+        /**
+         * วาดเครื่องหมาย (X หรือ ✓) บนกล่อง
+         * @param {CanvasRenderingContext2D} ctx - Context ของ canvas
+         * @param {number} x - ตำแหน่งแกน X ของกล่อง
+         * @param {number} y - ตำแหน่งแกน Y ของกล่อง
+         * @param {string} mark - 'X' หรือ '✓'
+         * @param {string} color - สีของเครื่องหมาย
+         */
+        const drawMark = (ctx, x, y, mark, color) => {
+            const boxWidth = 80;
+            const boxHeight = 40;
+            ctx.font = 'bold 30px sans-serif';
+            ctx.fillStyle = color;
+            ctx.fillText(mark, x + boxWidth / 2, y + boxHeight / 2 + 10);
+        };
+
+        /**
+         * ฟังก์ชันหลักสำหรับวาดไดอะแกรมทั้งหมด
+         * @param {CanvasRenderingContext2D} ctx - Context ของ canvas
+         */
+        const renderDiagram = (ctx) => {
+            const { canvas } = ctx;
+            const dangerColor = getComputedStyle(document.documentElement).getPropertyValue('--danger-color').trim();
+            const successColor = getComputedStyle(document.documentElement).getPropertyValue('--success-color').trim();
+            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim();
+            
+            // เคลียร์ canvas ก่อนวาด
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // ตั้งค่า font
+            ctx.font = '14px var(--font-family)';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // วาดหัวข้อคำสั่ง
+            ctx.fillStyle = textColor;
+            ctx.font = 'bold 16px var(--font-family)';
+            ctx.fillText('kubectl delete all --all', canvas.width / 2, 30);
+            
+            // วาดกล่อง resources ที่ถูกลบ
+            const deletedY = 80;
+            const resourcesToDelete = ['Pod', 'Service', 'RC'];
+            const startX = 40;
+            const gap = 140;
+            
+            resourcesToDelete.forEach((res, i) => {
+                const x = startX + i * gap;
+                drawResourceBox(ctx, x, deletedY, res, dangerColor);
+                drawMark(ctx, x, deletedY, '✕', dangerColor);
+            });
+            
+            // วาดกล่อง resource ที่ไม่ถูกลบ
+            const preservedY = 80;
+            const preservedX = startX + 3 * gap;
+            drawResourceBox(ctx, preservedX, preservedY, 'Secret', successColor);
+            drawMark(ctx, preservedX, preservedY, '✓', successColor);
+        };
+        
+        // --- การทำงานหลักหลัง DOM โหลดเสร็จ ---
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // ตั้งค่าปุ่มคัดลอก
+            const copyButton = document.querySelector('.copy-btn');
+            const codeTextElement = document.getElementById('command-text');
+            
+            if (copyButton && codeTextElement) {
+                copyButton.addEventListener('click', () => {
+                    // แยกเอาเฉพาะส่วนที่เป็นคำสั่ง ไม่เอาคอมเมนต์
+                    const commandLines = codeTextElement.textContent
+                        .split('\n')
+                        .filter(line => line.trim() && !line.trim().startsWith('#'))
+                        .join('\n');
+                    copyToClipboard(commandLines, copyButton);
+                });
+            }
+
+            // วาด canvas
+            const canvas = document.getElementById('deleteDiagram');
+            if (canvas && canvas.getContext) {
+                const ctx = canvas.getContext('2d');
+                renderDiagram(ctx);
+            }
+        });
+    </script>
+</body>
+</html>

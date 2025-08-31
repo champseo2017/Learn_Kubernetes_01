@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>สรุป: Replication และ Controllers สำหรับ Deploy Pods</title>
+    <style>
+        /* --- ตัวแปรกลาง --- */
+        :root {
+            --bg-color: #f8f9fa;
+            --text-color: #212529;
+            --primary-color: #0d6efd;
+            --card-bg: #ffffff;
+            --border-color: #dee2e6;
+            --code-bg: #e9ecef;
+            --heading-color: #343a40;
+            --success-color: #198754;
+            --danger-color: #dc3545;
+            --font-family: 'IBM Plex Sans Thai', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+        }
+
+        /* --- Reset และค่าเริ่มต้น --- */
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family);
+            line-height: 1.7;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        /* --- โครงสร้างหลัก --- */
+        .container {
+            width: 100%;
+            max-width: 960px;
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.07);
+            overflow: hidden;
+        }
+
+        header {
+            padding: 2rem 2.5rem;
+            background: linear-gradient(135deg, #0d6efd, #0d9afd);
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+        
+        header svg {
+            flex-shrink: 0;
+        }
+
+        main {
+            padding: 2.5rem;
+        }
+        
+        section {
+            margin-bottom: 3rem;
+        }
+        
+        section:last-child {
+            margin-bottom: 0;
+        }
+
+        footer {
+            text-align: center;
+            padding: 1.5rem;
+            font-size: 0.9rem;
+            color: #6c757d;
+            background-color: var(--bg-color);
+        }
+
+        /* --- องค์ประกอบตัวอักษร --- */
+        h1 {
+            margin: 0;
+            font-size: 2.1rem;
+            font-weight: 600;
+        }
+
+        h2 {
+            font-size: 1.75rem;
+            color: var(--heading-color);
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 0.75rem;
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+        }
+        
+        p, li {
+            font-size: 1rem;
+            color: #495057;
+        }
+
+        code {
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            background-color: var(--code-bg);
+            padding: 0.2em 0.5em;
+            border-radius: 5px;
+            font-size: 0.9em;
+            border: 1px solid var(--border-color);
+        }
+        
+        strong {
+           color: var(--heading-color);
+        }
+
+        /* --- ส่วนเปรียบเทียบ --- */
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2.5rem;
+            align-items: center;
+        }
+
+        .comparison-card {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            height: 100%;
+        }
+
+        .comparison-card h3 {
+            margin-top: 0;
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .unmanaged h3 { color: var(--danger-color); }
+        .managed h3 { color: var(--success-color); }
+
+        /* --- Canvas --- */
+        canvas {
+            display: block;
+            width: 100%;
+            margin-top: 1.5rem;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+
+        /* --- รายการ --- */
+        .topics-list {
+            list-style: none;
+            padding-left: 0;
+            columns: 2;
+            gap: 1.5rem;
+        }
+        
+        .topics-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            break-inside: avoid;
+        }
+        
+        .topics-list svg {
+            flex-shrink: 0;
+            margin-top: 4px;
+            color: var(--primary-color);
+        }
+        
+        /* --- Responsive --- */
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            main { padding: 1.5rem; }
+            .comparison-grid { grid-template-columns: 1fr; }
+            .topics-list { columns: 1; }
+            h1 { font-size: 1.8rem; }
+            h2 { font-size: 1.5rem; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 16V12" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 8H12.01" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M16 12L12 8L8 12" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div>
+                 <h1>Replication และ Controllers</h1>
+                 <p style="margin:0; opacity: 0.9;">สรุปการ Deploy Pods แบบอัตโนมัติ</p>
+            </div>
+        </header>
+
+        <main>
+            <section id="intro">
+                <h2>เปลี่ยนสู่ระบบอัตโนมัติ</h2>
+                <p>
+                    ในบทนี้เราจะเปลี่ยนจากการสร้างและจัดการ <code>pods</code> ด้วยตนเอง (manual) ไปสู่การทำให้ทุกอย่างเป็นอัตโนมัติ เพื่อให้ <code>deployments</code> ของเราทำงานได้อย่างต่อเนื่องและมีสถานะ <code>healthy</code> โดยไม่ต้องเข้าไปดูแลเอง หัวใจสำคัญคือ <strong>เราแทบจะไม่สร้าง <code>pods</code> ขึ้นมาตรงๆ</strong> แต่จะสร้าง <code>resource</code> ที่สูงกว่าเช่น <code>ReplicationControllers</code> หรือ <code>Deployments</code> ให้ทำหน้าที่สร้างและจัดการ <code>pods</code> แทนเรา
+                </p>
+            </section>
+            
+            <section id="comparison">
+                <h2>Unmanaged vs Managed Pods</h2>
+                <div class="comparison-grid">
+                    <article class="comparison-card unmanaged">
+                        <h3>
+                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                             Pods ธรรมดา (Unmanaged)
+                        </h3>
+                        <p>ถ้า <code>container</code> ล่ม Kubernetes จะรีสตาร์ทให้ แต่ถ้าหาก <code>node</code> ที่ Pod รันอยู่ล่ม Pod นั้นจะ<strong>หายไปเลย</strong>และไม่ถูกสร้างขึ้นมาใหม่</p>
+                    </article>
+                    <article class="comparison-card managed">
+                        <h3>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Pods ที่ถูกจัดการ (Managed)
+                        </h3>
+                        <p><code>Controller</code> จะคอยดูแลอยู่เสมอ ถ้า <code>node</code> ล่ม มันจะสร้าง Pod ใหม่ขึ้นมาทดแทนบน <code>node</code> อื่นที่ยังทำงานได้โดยอัตโนมัติ</p>
+                    </article>
+                </div>
+                 <canvas id="lifecycleDiagram" width="800" height="250" aria-label="ไดอะแกรมเปรียบเทียบวงจรชีวิตของ Unmanaged และ Managed Pods เมื่อ Node ล่ม"></canvas>
+            </section>
+            
+            <section id="topics">
+                <h2>เนื้อหาที่จะได้เรียนรู้</h2>
+                <ul class="topics-list">
+                    <li>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 21.35L10.55 20.03C5.4 15.36 2 12.28 2 8.5C2 5.42 4.42 3 7.5 3C9.24 3 10.91 3.81 12 5.09C13.09 3.81 14.76 3 16.5 3C19.58 3 22 5.42 22 8.5C22 12.28 18.6 15.36 13.45 20.04L12 21.35Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        การดูแล pods ให้มีสถานะ healthy
+                    </li>
+                    <li>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M17 2H7C5.89543 2 5 2.89543 5 4V20C5 21.1046 5.89543 22 7 22H17C18.1046 22 19 21.1046 19 20V4C19 2.89543 18.1046 2 17 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 18H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        การรัน pod แบบเดียวกันหลาย instance
+                    </li>
+                    <li>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M2 12H5L7.5 4L12.5 20L15 12H18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        การย้าย pod อัตโนมัติเมื่อ node ล่ม
+                    </li>
+                    <li>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        การทำ Horizontal Scaling
+                    </li>
+                    <li>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M21 16V8C21 6.89543 20.1046 6 19 6H5C3.89543 6 3 6.89543 3 8V16C3 17.1046 3.89543 18 5 18H19C20.1046 18 21 17.1046 21 16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 12L17 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        การรัน system-level pods
+                    </li>
+                    <li>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 14L11 16L15 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        การรัน batch jobs
+                    </li>
+                     <li>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 6V12L16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        การตั้งเวลาให้ job ทำงาน
+                    </li>
+                </ul>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // --- ฟังก์ชัน Utility สำหรับวาดบน Canvas ---
+        
+        const FONT = '13px var(--font-family)';
+        const FONT_BOLD = 'bold 13px var(--font-family)';
+
+        /**
+         * วาดกล่อง Node (Server)
+         * @param {CanvasRenderingContext2D} ctx - Context ของ canvas
+         * @param {number} x - ตำแหน่งแกน X
+         * @param {number} y - ตำแหน่งแกน Y
+         * @param {string} label - ชื่อของ Node
+         * @param {boolean} isFailed - สถานะว่า Node ล่มหรือไม่
+         */
+        const drawNode = (ctx, x, y, label, isFailed = false) => {
+            const width = 100;
+            const height = 120;
+            ctx.fillStyle = isFailed ? '#fff5f5' : '#f1f3f5';
+            ctx.strokeStyle = isFailed ? 'var(--danger-color)' : '#adb5bd';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash(isFailed ? [6, 3] : []);
+            ctx.fillRect(x, y, width, height);
+            ctx.strokeRect(x, y, width, height);
+
+            ctx.fillStyle = isFailed ? 'var(--danger-color)' : '#495057';
+            ctx.font = FONT_BOLD;
+            ctx.textAlign = 'center';
+            ctx.fillText(label, x + width / 2, y + 20);
+        };
+
+        /**
+         * วาด Pod
+         * @param {CanvasRenderingContext2D} ctx - Context ของ canvas
+         * @param {number} x - ตำแหน่งแกน X
+         * @param {number} y - ตำแหน่งแกน Y
+         */
+        const drawPod = (ctx, x, y) => {
+            const width = 60;
+            const height = 40;
+            ctx.fillStyle = '#dbe4ff';
+            ctx.strokeStyle = 'var(--primary-color)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([]);
+            ctx.fillRect(x, y, width, height);
+            ctx.strokeRect(x, y, width, height);
+
+            ctx.fillStyle = 'var(--primary-color)';
+            ctx.font = FONT;
+            ctx.textAlign = 'center';
+            ctx.fillText('Pod', x + width / 2, y + height / 2 + 5);
+        };
+        
+        /**
+         * วาด Controller
+         * @param {CanvasRenderingContext2D} ctx - Context ของ canvas
+         * @param {number} x - ตำแหน่งแกน X
+         * @param {number} y - ตำแหน่งแกน Y
+         */
+        const drawController = (ctx, x, y) => {
+             const width = 80;
+             const height = 30;
+             ctx.fillStyle = '#d3f9d8';
+             ctx.strokeStyle = 'var(--success-color)';
+             ctx.lineWidth = 1.5;
+             ctx.fillRect(x, y, width, height);
+             ctx.strokeRect(x, y, width, height);
+             ctx.fillStyle = 'var(--success-color)';
+             ctx.font = FONT_BOLD;
+             ctx.textAlign = 'center';
+             ctx.fillText('Controller', x + width / 2, y + height / 2 + 5);
+        };
+        
+         /**
+         * วาดลูกศร
+         * @param {CanvasRenderingContext2D} ctx - Context ของ canvas
+         * @param {number} fromX - จุดเริ่มต้น X
+         * @param {number} fromY - จุดเริ่มต้น Y
+         * @param {number} toX - จุดสิ้นสุด X
+         * @param {number} toY - จุดสิ้นสุด Y
+         * @param {string} color - สีของลูกศร
+         */
+        const drawArrow = (ctx, fromX, fromY, toX, toY, color) => {
+            const headlen = 10;
+            const angle = Math.atan2(toY - fromY, toX - fromX);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 2]);
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            ctx.lineTo(toX, toY);
+            ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.moveTo(toX, toY);
+            ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.stroke();
+        }
+
+        /**
+         * ฟังก์ชันหลักสำหรับวาดไดอะแกรมทั้งหมด
+         * @param {HTMLCanvasElement} canvasEl - Element ของ canvas
+         */
+        const renderLifecycleDiagram = (canvasEl) => {
+            if (!canvasEl || !canvasEl.getContext) return;
+            const ctx = canvasEl.getContext('2d');
+            const { width, height } = canvasEl;
+            const midX = width / 2;
+            const sectionWidth = width / 2 - 20;
+
+            // --- ส่วนที่ 1: Unmanaged Pod ---
+            ctx.fillStyle = '#343a40';
+            ctx.font = FONT_BOLD;
+            ctx.textAlign = 'center';
+            ctx.fillText('Unmanaged Pod: Node Fails', midX / 2, 30);
+            
+            drawNode(ctx, midX / 2 - 50, 60, 'Node A', true); // Node ล่ม
+            ctx.fillStyle = '#dc3545';
+            ctx.font = 'bold 24px var(--font-family)';
+            ctx.fillText('Pod Lost!', midX / 2, 190);
+
+            // --- เส้นแบ่งกลาง ---
+            ctx.strokeStyle = '#dee2e6';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(midX, 20);
+            ctx.lineTo(midX, height - 20);
+            ctx.stroke();
+
+            // --- ส่วนที่ 2: Managed Pod ---
+            ctx.fillStyle = '#343a40';
+            ctx.font = FONT_BOLD;
+            ctx.fillText('Managed Pod: Self-Healing', midX + sectionWidth / 2, 30);
+            
+            drawController(ctx, midX + sectionWidth / 2 - 40, 50);
+            drawNode(ctx, midX + 40, 100, 'Node A', true);
+            drawNode(ctx, midX + 180, 100, 'Node B');
+            drawPod(ctx, midX + 200, 140); // Pod ใหม่ถูกสร้าง
+            
+            drawArrow(ctx, midX + sectionWidth/2, 80, midX + 230, 135, '#198754');
+
+        };
+        
+        // --- การทำงานหลักหลัง DOM โหลดเสร็จ ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('lifecycleDiagram');
+            renderLifecycleDiagram(canvas);
+        });
+    </script>
+</body>
+</html>

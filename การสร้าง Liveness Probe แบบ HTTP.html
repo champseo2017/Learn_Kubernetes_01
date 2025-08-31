@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>การสร้าง Liveness Probe แบบ HTTP</title>
+    <style>
+        /* --- ตัวแปรกลางสำหรับ Theme --- */
+        :root {
+            --bg-color: #f9fafb;
+            --text-color: #374151;
+            --primary-color: #3b82f6;
+            --card-bg: #ffffff;
+            --border-color: #e5e7eb;
+            --code-bg: #1f2937;
+            --code-text-color: #d1d5db;
+            --heading-color: #111827;
+            --success-color: #16a34a;
+            --danger-color: #dc2626;
+            --font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --font-mono: 'Fira Code', 'JetBrains Mono', monospace;
+        }
+
+        /* --- Reset และค่าเริ่มต้น --- */
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family);
+            line-height: 1.8;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        /* --- โครงสร้างหลัก --- */
+        .container {
+            width: 100%;
+            max-width: 960px;
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.07), 0 4px 6px -2px rgba(0,0,0,0.05);
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        header {
+            padding: 2rem 2.5rem;
+            background-color: #f3f4f6;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+        
+        header svg {
+            flex-shrink: 0;
+            color: var(--primary-color);
+        }
+
+        main {
+            padding: 2.5rem;
+        }
+        
+        section {
+            margin-bottom: 3rem;
+        }
+        
+        section:last-child {
+            margin-bottom: 0;
+        }
+
+        footer {
+            text-align: center;
+            padding: 1.5rem;
+            font-size: 0.9rem;
+            color: #6b7280;
+            background-color: #f9fafb;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* --- องค์ประกอบตัวอักษร --- */
+        h1 {
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--heading-color);
+        }
+
+        h2 {
+            font-size: 1.6rem;
+            color: var(--heading-color);
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 0.5rem;
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+        }
+        
+        p {
+            font-size: 1.05rem;
+        }
+
+        code.inline-code {
+            font-family: var(--font-mono);
+            background-color: #eef2ff;
+            color: var(--primary-color);
+            padding: 0.2em 0.5em;
+            border-radius: 6px;
+            font-size: 0.9em;
+        }
+        
+        /* --- ส่วน Code Block --- */
+        .code-block-wrapper {
+            background-color: var(--code-bg);
+            border-radius: 12px;
+            margin-top: 1.5rem;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .code-block-wrapper pre {
+            margin: 0;
+            padding: 1.5rem;
+            color: var(--code-text-color);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            line-height: 1.7;
+            overflow-x: auto;
+        }
+        
+        .code-block-wrapper .copy-button {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background-color: #4b5563;
+            color: white;
+            border: none;
+            padding: 0.5rem 0.8rem;
+            border-radius: 6px;
+            font-family: var(--font-family);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .code-block-wrapper .copy-button:hover {
+            background-color: #6b7280;
+        }
+
+        .code-block-wrapper .copy-button.copied {
+            background-color: var(--success-color);
+        }
+        
+        /* --- ส่วน Workflow Steps --- */
+        .workflow-steps {
+            list-style: none;
+            padding: 0;
+            counter-reset: step-counter;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .workflow-steps li {
+            counter-increment: step-counter;
+            display: flex;
+            align-items: flex-start;
+            gap: 1.5rem;
+        }
+        
+        .workflow-steps li::before {
+            content: counter(step-counter);
+            background-color: var(--primary-color);
+            color: white;
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            flex-shrink: 0;
+            font-size: 1.1rem;
+        }
+
+        /* --- Canvas --- */
+        canvas {
+            display: block;
+            width: 100%;
+            margin: 2rem auto 0;
+            border-radius: 12px;
+            background-color: #f9fafb;
+            border: 1px solid var(--border-color);
+        }
+        
+        /* --- Responsive --- */
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            main, header { padding: 1.5rem; }
+            h1 { font-size: 1.8rem; }
+            h2 { font-size: 1.5rem; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M10.47 4.5H13.53C14.07 4.5 14.53 4.88 14.63 5.42L15.34 9H17C17.55 9 18 9.45 18 10V11C18 11.55 17.55 12 17 12H15.65L15.96 13.57C16.05 14.08 15.7 14.54 15.18 14.54C14.93 14.54 14.7 14.44 14.54 14.28L12 11.75V4.5M7 12V20C7 20.55 7.45 21 8 21H17C17.55 21 18 20.55 18 20V14C18 13.45 18.45 13 19 13H20C20.55 13 21 12.55 21 12V10C21 9.45 20.55 9 20 9H19C18.45 9 18 8.55 18 8V6C18 5.45 18.45 5 19 5H20C20.55 5 21 4.55 21 4V3C21 2.45 20.55 2 20 2H13.73C13.06 2 12.44 2.45 12.18 3.07L11.55 4.5H8C7.45 4.5 7 4.95 7 5.5V12M5 12H2V20H5V12Z" fill="currentColor"/>
+            </svg>
+            <div>
+                 <h1>การสร้าง Liveness Probe แบบ HTTP</h1>
+            </div>
+        </header>
+
+        <main>
+            <section id="intro">
+                <h2>ภาพรวมและหลักการ</h2>
+                <p>
+                    เนื้อหานี้จะอธิบายวิธีการสร้าง <code class="inline-code">liveness probe</code> แบบ HTTP GET เพื่อใช้สาธิตการทำงานจริง โดยเราจะใช้แอปพลิเคชันที่ถูกทำให้ "พัง" ได้เองโดยตั้งใจ เพื่อให้เห็นภาพว่า Kubernetes เข้ามาจัดการสถานการณ์นี้อย่างไร
+                </p>
+                <p>
+                    จุดเด่นของไฟล์ <code class="inline-code">kubia-liveness-probe.yaml</code> คือมีการกำหนดค่า <code class="inline-code">livenessProbe</code> ซึ่งเป็น probe ประเภท <code class="inline-code">httpGet</code> ที่จะคอยส่ง request ไปยัง path "/" บน port 8080 ของ container เพื่อตรวจสอบว่าแอปพลิเคชันยังทำงานเป็นปกติอยู่หรือไม่
+                </p>
+            </section>
+            
+            <section id="workflow">
+                <h2>ขั้นตอนการทำงาน</h2>
+                <ol class="workflow-steps">
+                    <li>แอปพลิเคชัน (<code class="inline-code">luksa/kubia-unhealthy</code>) จะทำงานได้ปกติในช่วง 5 requests แรก</li>
+                    <li>หลังจาก request ที่ 5 เป็นต้นไป แอปจะเริ่มตอบกลับด้วย HTTP status code <code class="inline-code">500</code> (Internal Server Error)</li>
+                    <li>เมื่อ Kubernetes ตรวจสอบ liveness probe แล้วเจอ status code <code class="inline-code">500</code> จะถือว่า probe ล้มเหลว</li>
+                    <li>ผลลัพธ์คือ Kubernetes จะสั่ง **รีสตาร์ท container** ให้โดยอัตโนมัติ ทำให้แอปกลับมาทำงานปกติอีกครั้ง</li>
+                </ol>
+            </section>
+
+            <section id="diagram">
+                <h2>วงจรการทำงานของ Probe</h2>
+                <canvas id="probeLifecycleCanvas" width="800" height="300" aria-label="ไดอะแกรมแสดงวงจรการทำงานของ Liveness Probe เริ่มจาก Kubelet ส่ง Probe, หากสำเร็จจะรอรอบถัดไป หากล้มเหลวเกินกำหนดจะสั่งรีสตาร์ท Container"></canvas>
+            </section>
+
+            <section id="code-example">
+                <h2>ตัวอย่าง Code (YAML)</h2>
+                <div class="code-block-wrapper">
+                    <button class="copy-button" aria-label="คัดลอกโค้ด">คัดลอก</button>
+                    <pre><code id="yamlCode"># kubia-liveness-probe.yaml
+
+apiVersion: v1 # ระบุเวอร์ชันของ Kubernetes API
+kind: Pod      # ระบุประเภทของ resource ว่าเป็น Pod
+metadata:
+  name: kubia-liveness # ตั้งชื่อ Pod ของเรา
+spec:
+  containers:
+  - name: kubia # ตั้งชื่อ container
+    image: luksa/kubia-unhealthy # ระบุ container image ที่จะใช้ (ตัวนี้เป็นเวอร์ชันที่จะ fail)
+    
+    livenessProbe: # ส่วนของการกำหนดค่า liveness probe
+      httpGet: # กำหนดให้ probe เป็นประเภท HTTP GET
+        path: / # ระบุ path ที่จะให้ probe เข้าไปตรวจสอบ
+        port: 8080 # ระบุ network port ที่จะใช้ในการตรวจสอบ</code></pre>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        /**
+         * ฟังก์ชัน Utility สำหรับจัดการ UI และการวาด Canvas
+         * ถูกเขียนเป็นฟังก์ชันย่อยๆ เพื่อให้โค้ดสะอาดและนำกลับมาใช้ใหม่ได้
+         */
+
+        /**
+         * จัดการการคัดลอกข้อความจาก Code Block
+         * @param {string} codeElementId - ID ของ element ที่มี code
+         * @param {HTMLButtonElement} buttonElement - Element ของปุ่มที่กด
+         */
+        const handleCodeCopy = (codeElementId, buttonElement) => {
+            const codeEl = document.getElementById(codeElementId);
+            if (!codeEl || !buttonElement) return;
+
+            // ใช้ document.execCommand เพื่อความเข้ากันได้สูงสุดใน iFrame
+            const textArea = document.createElement('textarea');
+            textArea.value = codeEl.textContent;
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                buttonElement.textContent = 'คัดลอกแล้ว!';
+                buttonElement.classList.add('copied');
+                
+                // เปลี่ยนข้อความกลับหลังจาก 2 วินาที
+                setTimeout(() => {
+                    buttonElement.textContent = 'คัดลอก';
+                    buttonElement.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                console.error('ไม่สามารถคัดลอกโค้ดได้:', err);
+                buttonElement.textContent = 'ล้มเหลว';
+            }
+            
+            document.body.removeChild(textArea);
+        };
+
+        // --- ฟังก์ชันสำหรับวาด Canvas ---
+        
+        // ค่าคงที่สำหรับสีและฟอนต์
+        const GFX = {
+            COLORS: {
+                PRIMARY: '#3b82f6', SUCCESS: '#16a34a', DANGER: '#dc2626',
+                TEXT: '#374151', BORDER: '#e5e7eb', BG_LIGHT: '#f9fafb',
+            },
+            FONTS: {
+                NORMAL: '13px var(--font-family)', BOLD: 'bold 14px var(--font-family)'
+            }
+        };
+
+        /**
+         * (Pure) วาดกล่องข้อความบน Canvas
+         */
+        const drawTextBlock = (ctx, pos, text, style) => {
+            const { x, y, w, h } = pos;
+            ctx.fillStyle = style.fill;
+            ctx.strokeStyle = style.stroke;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, h, 8);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = GFX.COLORS.TEXT;
+            ctx.font = GFX.FONTS.BOLD;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, x + w / 2, y + h / 2);
+        };
+        
+        /**
+         * (Pure) วาดลูกศรเชื่อมระหว่างจุด
+         */
+        const drawArrow = (ctx, from, to, label) => {
+            const headlen = 10;
+            const angle = Math.atan2(to.y - from.y, to.x - from.x);
+            ctx.strokeStyle = GFX.COLORS.TEXT;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(from.x, from.y);
+            ctx.lineTo(to.x, to.y);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(to.x, to.y);
+            ctx.lineTo(to.x - headlen * Math.cos(angle - Math.PI / 6), to.y - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(to.x - headlen * Math.cos(angle + Math.PI / 6), to.y - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fillStyle = GFX.COLORS.TEXT;
+            ctx.fill();
+
+            ctx.font = GFX.FONTS.NORMAL;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(label, from.x + (to.x - from.x) / 2, from.y + (to.y - from.y) / 2 - 8);
+        };
+
+        /**
+         * (Renderer) วาดไดอะแกรมวงจรชีวิตของ Probe
+         */
+        const renderProbeLifecycle = (canvasEl) => {
+            if (!canvasEl?.getContext) return;
+            const ctx = canvasEl.getContext('2d');
+            const { width, height } = canvasEl;
+            
+            // ตำแหน่งขององค์ประกอบ
+            const P = {
+                kubelet: { x: 50, y: height / 2 - 30, w: 120, h: 60 },
+                container: { x: 270, y: height / 2 - 30, w: 140, h: 60 },
+                check: { x: 500, y: height / 2 - 30, w: 120, h: 60 },
+                restart: { x: 500, y: height - 70, w: 120, h: 60 },
+                loop: { x: 270, y: 50, w: 140, h: 40}
+            };
+            
+            // วาดกล่องข้อความ
+            drawTextBlock(ctx, P.kubelet, 'Kubelet', { fill: GFX.COLORS.BG_LIGHT, stroke: GFX.COLORS.BORDER });
+            drawTextBlock(ctx, P.container, 'Container', { fill: GFX.COLORS.BG_LIGHT, stroke: GFX.COLORS.BORDER });
+            drawTextBlock(ctx, P.check, 'Check Health', { fill: '#eef2ff', stroke: GFX.COLORS.PRIMARY });
+            drawTextBlock(ctx, P.restart, 'Restart', { fill: '#fee2e2', stroke: GFX.COLORS.DANGER });
+
+            // วาดลูกศร
+            drawArrow(ctx, { x: P.kubelet.x + P.kubelet.w, y: height/2 }, { x: P.container.x, y: height/2 }, 'Sends Probe');
+            drawArrow(ctx, { x: P.container.x + P.container.w, y: height/2 }, { x: P.check.x, y: height/2 }, 'Receives Response');
+            
+            // วาดเส้นทางเงื่อนไข
+            ctx.beginPath();
+            ctx.moveTo(P.check.x + P.check.w / 2, P.check.y);
+            ctx.lineTo(P.check.x + P.check.w / 2, P.loop.y + P.loop.h);
+            ctx.lineTo(P.loop.x + P.loop.w, P.loop.y + P.loop.h / 2);
+            ctx.stroke();
+            drawArrow(ctx, { x: P.loop.x + P.loop.w, y: P.loop.y + P.loop.h / 2 }, { x: P.loop.x, y: P.loop.y + P.loop.h / 2}, 'Success (HTTP 200)');
+            
+            ctx.beginPath();
+            ctx.moveTo(P.check.x + P.check.w / 2, P.check.y + P.check.h);
+            ctx.lineTo(P.check.x + P.check.w / 2, P.restart.y);
+            ctx.stroke();
+            const textMetrics = ctx.measureText("Fail (HTTP 500)");
+            ctx.fillText("Fail (HTTP 500)", P.check.x + P.check.w / 2 - textMetrics.width - 5, (P.check.y + P.check.h + P.restart.y)/2);
+        };
+        
+        // --- Event Listeners ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const copyButton = document.querySelector('.copy-button');
+            copyButton.addEventListener('click', () => handleCodeCopy('yamlCode', copyButton));
+
+            const canvas = document.getElementById('probeLifecycleCanvas');
+            renderProbeLifecycle(canvas);
+        });
+    </script>
+</body>
+</html>

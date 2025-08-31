@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>การตั้งค่าเพิ่มเติมสำหรับ Liveness Probe</title>
+    <style>
+        /* --- ตัวแปรกลางสำหรับ Theme --- */
+        :root {
+            --bg-color: #f8fafc;
+            --text-color: #334155;
+            --primary-color: #0ea5e9;
+            --card-bg: #ffffff;
+            --border-color: #e2e8f0;
+            --code-bg: #1e293b;
+            --code-text-color: #e2e8f0;
+            --heading-color: #0f172a;
+            --success-color: #22c55e;
+            --warning-bg: #fffbeb;
+            --warning-border: #facc15;
+            --font-family: 'IBM Plex Sans Thai', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --font-mono: 'Fira Code', 'JetBrains Mono', monospace;
+        }
+
+        /* --- Reset และค่าเริ่มต้น --- */
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family);
+            line-height: 1.8;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        /* --- โครงสร้างหลัก --- */
+        .container {
+            width: 100%;
+            max-width: 1024px;
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        header {
+            padding: 2rem 2.5rem;
+            background-color: var(--heading-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+        
+        header svg {
+            flex-shrink: 0;
+            color: var(--primary-color);
+        }
+
+        main {
+            padding: 2.5rem;
+        }
+        
+        section {
+            margin-bottom: 3.5rem;
+        }
+        
+        section:last-child {
+            margin-bottom: 0;
+        }
+        
+        /* --- องค์ประกอบตัวอักษร --- */
+        h1 {
+            margin: 0;
+            font-size: 2.1rem;
+            font-weight: 600;
+        }
+
+        h2 {
+            font-size: 1.7rem;
+            color: var(--heading-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+        }
+        
+        p, li {
+            font-size: 1.05rem;
+            color: #475569;
+        }
+
+        code.inline-code {
+            font-family: var(--font-mono);
+            background-color: #f0f9ff;
+            color: var(--primary-color);
+            padding: 0.2em 0.5em;
+            border-radius: 6px;
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+        
+        /* --- ส่วนประกอบ UI --- */
+        .properties-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .property-card {
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            background-color: #fafafa;
+        }
+
+        .property-card h3 {
+            margin-top: 0;
+            font-size: 1.1rem;
+            color: var(--heading-color);
+            font-weight: 600;
+        }
+        
+        .property-card p {
+            font-size: 0.95rem;
+            margin-bottom: 0;
+        }
+        
+        .property-card .default-value {
+            font-size: 0.85rem;
+            color: #64748b;
+        }
+        
+        .warning-box {
+            background-color: var(--warning-bg);
+            border-left: 4px solid var(--warning-border);
+            padding: 1.25rem 1.75rem;
+            border-radius: 8px;
+            margin: 2rem 0;
+        }
+        
+        .warning-box h3 {
+            margin-top: 0;
+            color: #ca8a04;
+        }
+
+        /* --- ส่วน Code Block --- */
+        .code-block-wrapper {
+            background-color: var(--code-bg);
+            border-radius: 12px;
+            margin-top: 1.5rem;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .code-block-wrapper pre {
+            margin: 0;
+            padding: 1.5rem;
+            color: var(--code-text-color);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            line-height: 1.7;
+            overflow-x: auto;
+        }
+        
+        .code-block-wrapper .copy-button {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background-color: #334155;
+            color: white;
+            border: none;
+            padding: 0.5rem 0.8rem;
+            border-radius: 6px;
+            font-family: var(--font-family);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .code-block-wrapper .copy-button:hover {
+            background-color: #475569;
+        }
+
+        .code-block-wrapper .copy-button.copied {
+            background-color: var(--success-color);
+        }
+        
+        /* --- Canvas --- */
+        canvas {
+            display: block;
+            width: 100%;
+            margin: 2rem auto 0;
+        }
+        
+        /* --- Responsive --- */
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            main, header { padding: 1.5rem; }
+            h1 { font-size: 1.8rem; }
+            h2 { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M10.325 4.317a1.75 1.75 0 013.35 0L15.259 7.72a1.75 1.75 0 011.087 2.443l-2.002 3.468a1.75 1.75 0 01-3.133.001l-2.002-3.468a1.75 1.75 0 011.087-2.443l1.584-3.403zM10.325 19.683a1.75 1.75 0 013.35 0L15.259 16.28a1.75 1.75 0 011.087-2.443l-2.002-3.468a1.75 1.75 0 01-3.133-.001l-2.002 3.468a1.75 1.75 0 011.087 2.443l1.584 3.403z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div>
+                 <h1>การตั้งค่าเพิ่มเติมสำหรับ Liveness Probe</h1>
+            </div>
+        </header>
+
+        <main>
+            <section id="properties">
+                <h2>Properties ที่ปรับแต่งได้</h2>
+                <p>
+                    นอกจากประเภทของ Probe แล้ว เรายังสามารถปรับแต่งพฤติกรรมการตรวจสอบได้อีกหลายอย่างผ่าน Properties ในไฟล์ YAML ซึ่งสามารถดูค่าที่ตั้งไว้ได้จากคำสั่ง <code class="inline-code">kubectl describe</code>
+                </p>
+                <div class="properties-grid">
+                    <article class="property-card">
+                        <h3>initialDelaySeconds</h3>
+                        <p>เวลารอก่อนที่จะเริ่ม Probe ครั้งแรก</p>
+                        <p class="default-value">(Default: 0 วินาที)</p>
+                    </article>
+                     <article class="property-card">
+                        <h3>timeoutSeconds</h3>
+                        <p>เวลารอการตอบสนอง ก่อนจะถือว่าล้มเหลว</p>
+                        <p class="default-value">(Default: 1 วินาที)</p>
+                    </article>
+                     <article class="property-card">
+                        <h3>periodSeconds</h3>
+                        <p>ความถี่ในการตรวจสอบแต่ละครั้ง</p>
+                        <p class="default-value">(Default: 10 วินาที)</p>
+                    </article>
+                     <article class="property-card">
+                        <h3>failureThreshold</h3>
+                        <p>จำนวนครั้งที่ Probe ต้องล้มเหลวติดต่อกัน ถึงจะสั่งรีสตาร์ท</p>
+                         <p class="default-value">(Default: 3 ครั้ง)</p>
+                    </article>
+                </div>
+            </section>
+            
+            <section id="initial-delay-importance">
+                <h2>ความสำคัญของ initialDelaySeconds</h2>
+                <p>
+                    Property ที่สำคัญที่สุดคือ <code class="inline-code">initialDelaySeconds</code> เพราะแอปพลิเคชันส่วนใหญ่ต้องใช้เวลาในการ khởi động (start up) ก่อนที่จะพร้อมรับ request หาก Kubernetes เริ่มส่ง probe เร็วเกินไปในขณะที่แอปยังไม่พร้อม จะทำให้ probe ล้มเหลวและ Container ถูกสั่งรีสตาร์ทโดยไม่จำเป็น
+                </p>
+                 <canvas id="startupTimelineCanvas" width="800" height="150" aria-label="ไดอะแกรมไทม์ไลน์แสดงช่วงเวลา start up ของ container, ช่วง delay, และจุดที่ liveness probe เริ่มทำงานครั้งแรก"></canvas>
+                <div class="warning-box">
+                    <h3>💡 Tip: แก้ปัญหา Pod รีสตาร์ทไม่หยุด</h3>
+                    <p>
+                        หากคุณเจอปัญหา Pod รีสตาร์ทตัวเองตลอดเวลาตอนเริ่มต้น ให้ลองใช้ <code class="inline-code">kubectl describe</code> เพื่อตรวจสอบ <code class="inline-code">Events</code> และ <code class="inline-code">Exit Code</code> (เช่น 137 หรือ 143) ถ้าเห็นว่าเกี่ยวข้องกับ liveness probe ที่ล้มเหลว ก็เป็นไปได้สูงว่าคุณต้องปรับค่า <code class="inline-code">initialDelaySeconds</code> ให้เหมาะสมกับแอปของคุณ
+                    </p>
+                </div>
+            </section>
+
+            <section id="code-example">
+                <h2>ตัวอย่าง Code (YAML)</h2>
+                <div class="code-block-wrapper">
+                    <button class="copy-button" aria-label="คัดลอกโค้ด">คัดลอก</button>
+                    <pre><code id="yamlCode"># ... (ส่วนบนของไฟล์ YAML) ...
+
+    livenessProbe: # ส่วนของการกำหนดค่า liveness probe
+      httpGet:
+        path: /      # ระบุ path ที่จะให้ probe เข้าไปตรวจสอบ
+        port: 8080   # ระบุ port ที่จะใช้ในการตรวจสอบ
+      initialDelaySeconds: 15 # หน่วงเวลาก่อนเริ่ม probe ครั้งแรกเป็นเวลา 15 วินาที
+      periodSeconds: 20       # ตรวจสอบทุกๆ 20 วินาที
+      failureThreshold: 5     # Restart เมื่อล้มเหลวติดต่อกัน 5 ครั้ง</code></pre>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        /**
+         * ฟังก์ชัน Utility สำหรับจัดการ UI และการวาด Canvas
+         * ถูกเขียนเป็นฟังก์ชันย่อยๆ เพื่อให้โค้ดสะอาดและนำกลับมาใช้ใหม่ได้
+         */
+
+        /**
+         * จัดการการคัดลอกข้อความจาก Code Block
+         * @param {string} codeElementId - ID ของ element ที่มี code
+         * @param {HTMLButtonElement} buttonElement - Element ของปุ่มที่กด
+         */
+        const handleCodeCopy = (codeElementId, buttonElement) => {
+            const codeEl = document.getElementById(codeElementId);
+            if (!codeEl || !buttonElement) return;
+
+            const textArea = document.createElement('textarea');
+            textArea.value = codeEl.textContent;
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                buttonElement.textContent = 'คัดลอกแล้ว!';
+                buttonElement.classList.add('copied');
+                
+                setTimeout(() => {
+                    buttonElement.textContent = 'คัดลอก';
+                    buttonElement.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                console.error('ไม่สามารถคัดลอกโค้ดได้:', err);
+            } finally {
+                document.body.removeChild(textArea);
+            }
+        };
+
+        // --- ฟังก์ชันสำหรับวาด Canvas ---
+        
+        // ค่าคงที่สำหรับสีและฟอนต์
+        const GFX = {
+            COLORS: {
+                PRIMARY: '#0ea5e9', SUCCESS: '#22c55e', WARNING: '#f59e0b',
+                TEXT: '#334155', BORDER: '#cbd5e1',
+            },
+            FONTS: {
+                NORMAL: '13px var(--font-family)', BOLD: 'bold 14px var(--font-family)'
+            }
+        };
+
+        /**
+         * วาดเส้น Marker บนไทม์ไลน์
+         */
+        const drawMarker = (ctx, x, y, label) => {
+            ctx.beginPath();
+            ctx.moveTo(x, y - 10);
+            ctx.lineTo(x, y + 10);
+            ctx.strokeStyle = GFX.COLORS.BORDER;
+            ctx.stroke();
+
+            ctx.fillStyle = GFX.COLORS.TEXT;
+            ctx.font = GFX.FONTS.NORMAL;
+            ctx.textAlign = 'center';
+            ctx.fillText(label, x, y + 25);
+        };
+        
+        /**
+         * วาดช่วงเวลาบนไทม์ไลน์
+         */
+        const drawTimeSpan = (ctx, startX, endX, y, label, color) => {
+            // วาดเส้น Brace
+            ctx.beginPath();
+            ctx.moveTo(startX, y - 15);
+            ctx.lineTo(startX, y - 25);
+            ctx.lineTo(endX, y - 25);
+            ctx.lineTo(endX, y - 15);
+            ctx.strokeStyle = color;
+            ctx.stroke();
+
+            // วาดข้อความ
+            ctx.fillStyle = color;
+            ctx.font = GFX.FONTS.BOLD;
+            ctx.textAlign = 'center';
+            ctx.fillText(label, startX + (endX - startX) / 2, y - 35);
+        };
+
+
+        /**
+         * (Renderer) วาดไดอะแกรมไทม์ไลน์การ khởi động
+         */
+        const renderStartupTimeline = (canvasEl) => {
+            if (!canvasEl?.getContext) return;
+            const ctx = canvasEl.getContext('2d');
+            const { width, height } = canvasEl;
+            const timelineY = height / 2 + 10;
+            const padding = 50;
+
+            // วาดเส้นไทม์ไลน์หลัก
+            ctx.beginPath();
+            ctx.moveTo(padding, timelineY);
+            ctx.lineTo(width - padding, timelineY);
+            ctx.strokeStyle = GFX.COLORS.BORDER;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // กำหนดตำแหน่งจุดต่างๆ บนไทม์ไลน์
+            const startX = padding;
+            const readyX = padding + (width - padding * 2) * 0.3;
+            const firstProbeX = padding + (width - padding * 2) * 0.7;
+
+            // วาด Markers
+            drawMarker(ctx, startX, timelineY, 'Container Starts');
+            drawMarker(ctx, readyX, timelineY, 'App Ready');
+            drawMarker(ctx, firstProbeX, timelineY, 'First Probe');
+
+            // วาดช่วงเวลา
+            drawTimeSpan(ctx, startX, readyX, timelineY, 'App Startup Time', GFX.COLORS.TEXT);
+            drawTimeSpan(ctx, readyX, firstProbeX, timelineY, 'initialDelaySeconds', GFX.COLORS.PRIMARY);
+        };
+        
+        // --- Event Listeners ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const copyButton = document.querySelector('.copy-button');
+            copyButton.addEventListener('click', () => handleCodeCopy('yamlCode', copyButton));
+
+            const canvas = document.getElementById('startupTimelineCanvas');
+            renderStartupTimeline(canvas);
+        });
+    </script>
+</body>
+</html>
