@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>การลบ Pods ด้วย Label Selectors</title>
+    <style>
+        /* --- ตัวแปรสำหรับสไตล์ --- */
+        :root {
+            --bg-color: #f8fafc;
+            --text-color: #0f172a;
+            --primary-color: #4f46e5; /* Indigo */
+            --primary-hover-color: #4338ca;
+            --border-color: #e2e8f0;
+            --code-bg-color: #1e293b;
+            --code-text-color: #e2e8f0;
+            --header-color: #1e293b;
+            --subtle-text-color: #64748b;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            --label-color-manual: #be185d; /* Pink */
+            --label-color-canary: #d97706; /* Amber */
+        }
+
+        /* --- Reset และดีไซน์พื้นฐาน --- */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.7;
+            font-size: 16px;
+        }
+
+        /* --- โครงสร้าง Layout --- */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2.5rem 1.5rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3.5rem;
+        }
+
+        main {
+            display: grid;
+            gap: 3rem;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 3.5rem;
+            padding-top: 2rem;
+            font-size: 0.9em;
+            color: var(--subtle-text-color);
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* --- สไตล์ตัวอักษร --- */
+        h1, h2, h3 {
+            line-height: 1.3;
+            color: var(--header-color);
+            font-weight: 800;
+        }
+
+        h1 {
+            font-size: 2.75rem;
+            letter-spacing: -0.025em;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        h3 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: #334155;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        p {
+            margin-bottom: 1.25rem;
+        }
+        
+        strong, b {
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        /* --- Code Blocks --- */
+        code {
+            font-family: "SF Mono", "Fira Code", monospace;
+            background-color: #f1f5f9;
+            color: var(--primary-color);
+            padding: 0.2em 0.4em;
+            border-radius: 6px;
+            font-size: 0.9em;
+        }
+
+        .code-block-wrapper {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+
+        pre {
+            background-color: var(--code-bg-color);
+            color: var(--code-text-color);
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+        
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            color: inherit;
+        }
+        
+        .copy-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background-color: #475569;
+            color: #f1f5f9;
+            border: none;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: var(--font-family);
+            font-size: 0.8rem;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+            opacity: 0.7;
+        }
+        
+        .code-block-wrapper:hover .copy-btn {
+            opacity: 1;
+        }
+        
+        .copy-btn:hover {
+            background-color: #64748b;
+        }
+        
+        .copy-btn.copied {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        /* --- องค์ประกอบพิเศษ --- */
+        section[aria-labelledby="diagram-heading"] {
+            background-color: #eef2ff; /* Light Indigo */
+            border-radius: 12px;
+            padding: 2rem;
+        }
+
+        .diagram-container {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            justify-content: center;
+            align-items: center;
+            background-color: #f1f5f9;
+            padding: 2rem;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin-top: 1.5rem;
+        }
+
+        canvas#label-selector-canvas {
+            max-width: 100%;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>การลบ Pods ด้วย Label Selectors</h1>
+            <p style="color: var(--subtle-text-color); font-size: 1.1rem; margin-top: 0.5rem;">วิธีที่ทรงพลังในการจัดการทรัพยากรจำนวนมาก</p>
+        </header>
+
+        <main>
+            <section aria-labelledby="summary-heading">
+                <h2 id="summary-heading">หลักการทำงาน</h2>
+                <p>
+                    นอกจากการลบ <strong>Pod</strong> ทีละตัวตามชื่อแล้ว เรายังสามารถใช้ <strong>Label Selector</strong> เพื่อลบ Pod หลายๆ ตัวพร้อมกันได้ในคำสั่งเดียว ซึ่งสะดวกและทรงพลังมาก หลักการคือ เราจะใช้ <strong>Label</strong> ที่เรากำหนดไว้ให้กับ Pod ต่างๆ เป็นเงื่อนไขในการเลือก ถ้า Pod ไหนมี Label ตรงตามที่เราเลือก มันก็จะถูกลบทั้งหมด
+                </p>
+                <p>
+                    ตัวอย่างเช่น เราอาจจะลบ Pod ที่เป็นเวอร์ชันทดสอบ (canary) ทั้งหมดได้ง่ายๆ โดยใช้ selector อย่าง <code>rel=canary</code> โดยไม่กระทบกับ Pod ที่เป็นเวอร์ชัน stable เลย
+                </p>
+            </section>
+            
+            <section aria-labelledby="diagram-heading">
+                <h2 id="diagram-heading">ภาพประกอบ</h2>
+                <div class="diagram-container">
+                    <!-- SVG Icon -->
+                    <svg width="300" height="100" viewBox="0 0 300 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="svg-title">
+                        <title id="svg-title">Label Selector Icon</title>
+                        <g>
+                            <!-- Selector -->
+                            <rect x="10" y="25" width="120" height="50" rx="8" fill="#1e293b"/>
+                            <text x="20" y="58" font-family="monospace" font-size="14" font-weight="bold" fill="#f8fafc">-l rel=canary</text>
+                            <!-- Arrow -->
+                            <line x1="140" y1="50" x2="180" y2="50" stroke="#64748b" stroke-width="2.5" stroke-dasharray="5,3"/>
+                            <polygon points="180,50 172,45 172,55" fill="#64748b"/>
+                            <!-- Pod -->
+                            <rect x="190" y="25" width="100" height="50" rx="8" fill="#9f1239"/>
+                            <text x="222" y="50" font-family="sans-serif" font-size="16" font-weight="bold" fill="#f8fafc">Pod</text>
+                            <text x="205" y="68" font-family="monospace" font-size="12" fill="#f1f5f9">rel: canary</text>
+                        </g>
+                    </svg>
+                    <!-- Canvas Diagram -->
+                    <canvas id="label-selector-canvas" width="500" height="150" aria-label="Canvas diagram showing multiple pods, with the 'canary' pods being selected and marked for deletion."></canvas>
+                </div>
+            </section>
+
+            <section aria-labelledby="code-examples-heading">
+                <h2 id="code-examples-heading">ตัวอย่างคำสั่ง</h2>
+                
+                <article aria-labelledby="delete-by-label-heading">
+                    <h3 id="delete-by-label-heading">1. ลบ Pods จาก Label ที่เจาะจง</h3>
+                    <div class="code-block-wrapper">
+                        <pre><code class="language-bash"># สั่งลบ pod ทั้งหมดที่มี label "creation_method=manual"
+# -l คือ flag สำหรับระบุ label selector
+$ kubectl delete po -l creation_method=manual</code></pre>
+                        <button class="copy-btn" aria-label="คัดลอกคำสั่งลบ Pods ตาม label">คัดลอก</button>
+                    </div>
+                </article>
+
+                <article aria-labelledby="delete-canary-heading">
+                    <h3 id="delete-canary-heading">2. ตัวอย่างการลบ Pods ที่เป็น Canary Release</h3>
+                    <div class="code-block-wrapper">
+                        <pre><code class="language-bash"># สั่งลบ pod ทั้งหมดที่มี label "rel=canary"
+$ kubectl delete po -l rel=canary</code></pre>
+                        <button class="copy-btn" aria-label="คัดลอกคำสั่งลบ Canary Pods">คัดลอก</button>
+                    </div>
+                </article>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // --- Utility Functions (ฟังก์ชันตัวช่วย) ---
+
+        /**
+         * คัดลอกข้อความไปยัง Clipboard
+         * @param {string} text - ข้อความที่ต้องการคัดลอก
+         */
+        const copyToClipboard = (text) => {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed"; 
+            textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+            } catch (err) {
+                console.error('ไม่สามารถคัดลอกได้', err);
+            }
+            document.body.removeChild(textArea);
+        };
+
+        // --- Renderer & Animation Functions (ฟังก์ชันวาดและเคลื่อนไหว) ---
+        
+        /**
+         * วาด Diagram การเลือก Pod ด้วย Label Selector บน Canvas
+         * @param {HTMLCanvasElement} canvas - Element ของ canvas
+         */
+        const drawLabelSelectorDiagram = (canvas) => {
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            const pods = [
+                { x: 50, y: 60, label: 'stable', color: '#0f172a' },
+                { x: 130, y: 60, label: 'canary', color: '#9f1239' },
+                { x: 210, y: 60, label: 'stable', color: '#0f172a' },
+                { x: 290, y: 60, label: 'canary', color: '#9f1239' },
+                { x: 370, y: 60, label: 'stable', color: '#0f172a' },
+                { x: 450, y: 60, label: 'canary', color: '#9f1239' },
+            ];
+            
+            let progress = 0;
+            let startTime = null;
+            const duration = 3000;
+
+            const drawPod = (pod, alpha = 1) => {
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = pod.color;
+                ctx.beginPath();
+                ctx.roundRect(pod.x - 35, pod.y - 30, 70, 60, [8]);
+                ctx.fill();
+
+                // เปลี่ยนสีตัวอักษรตามประเภทของ Pod
+                if (pod.label === 'stable') {
+                    ctx.fillStyle = '#f8fafc'; // สีขาวสำหรับ stable pod
+                } else {
+                    ctx.fillStyle = '#f8fafc'; // สีขาวสำหรับ canary pod
+                }
+                
+                ctx.font = 'bold 14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Pod', pod.x, pod.y);
+                ctx.font = '11px monospace';
+                ctx.fillText(`rel: ${pod.label}`, pod.x, pod.y + 18);
+            };
+
+            const drawCross = (pod) => {
+                 ctx.strokeStyle = '#b91c1c';
+                 ctx.lineWidth = 5;
+                 ctx.beginPath();
+                 ctx.moveTo(pod.x - 25, pod.y - 20);
+                 ctx.lineTo(pod.x + 25, pod.y + 20);
+                 ctx.moveTo(pod.x + 25, pod.y - 20);
+                 ctx.lineTo(pod.x - 25, pod.y + 20);
+                 ctx.stroke();
+            };
+
+            const animate = (timestamp) => {
+                if (!startTime) startTime = timestamp;
+                const elapsed = timestamp - startTime;
+                progress = Math.min(elapsed / duration, 1);
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                pods.forEach(pod => {
+                    // วาด Pod ทั้งหมดด้วยความทึบ 100% ไม่ต้องจางลงแล้ว
+                    drawPod(pod, 1);
+                });
+
+                if (progress > 0.5) {
+                    pods.forEach(pod => {
+                        if (pod.label === 'canary') {
+                            drawCross(pod);
+                        }
+                    });
+                }
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                }
+            };
+            
+            requestAnimationFrame(animate);
+        };
+
+        // --- Event Listener Setup ---
+
+        /**
+         * ติดตั้ง Event Listener ทั้งหมดเมื่อ DOM โหลดเสร็จ
+         */
+        const setupEventListeners = () => {
+            document.querySelectorAll('.copy-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const wrapper = e.target.closest('.code-block-wrapper');
+                    const codeElement = wrapper.querySelector('code');
+                    
+                    copyToClipboard(codeElement.innerText);
+
+                    const originalText = button.textContent;
+                    button.textContent = 'คัดลอกแล้ว!';
+                    button.classList.add('copied');
+                    
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                        button.classList.remove('copied');
+                    }, 2000);
+                });
+            });
+        };
+
+        // --- Main Execution (เริ่มการทำงาน) ---
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            const canvas = document.getElementById('label-selector-canvas');
+            if (canvas instanceof HTMLCanvasElement) {
+                if (!CanvasRenderingContext2D.prototype.roundRect) {
+                    console.warn('เบราว์เซอร์นี้ไม่รองรับ roundRect บน canvas');
+                }
+                drawLabelSelectorDiagram(canvas);
+            }
+        });
+    </script>
+</body>
+</html>

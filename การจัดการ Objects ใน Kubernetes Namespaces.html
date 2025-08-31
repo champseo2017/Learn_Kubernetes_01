@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>การจัดการ Objects ใน Kubernetes Namespaces</title>
+    <style>
+        /* --- ตัวแปรสำหรับสไตล์ --- */
+        :root {
+            --bg-color: #f9fafb;
+            --text-color: #111827;
+            --primary-color: #2563eb;
+            --primary-hover-color: #1d4ed8;
+            --border-color: #e5e7eb;
+            --code-bg-color: #1f2937;
+            --code-text-color: #d1d5db;
+            --header-color: #1f2937;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        /* --- Reset และดีไซน์พื้นฐาน --- */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            font-size: 16px;
+        }
+
+        /* --- โครงสร้าง Layout --- */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1.5rem;
+        }
+
+        main {
+            display: grid;
+            gap: 2.5rem;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            font-size: 0.9em;
+            color: #6b7280;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* --- สไตล์ตัวอักษร --- */
+        h1, h2, h3 {
+            line-height: 1.3;
+            color: var(--header-color);
+            font-weight: 700;
+        }
+
+        h1 {
+            font-size: 2.25rem;
+        }
+
+        h2 {
+            font-size: 1.75rem;
+            margin-bottom: 1rem;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 0.5rem;
+        }
+        
+        h3 {
+            font-size: 1.25rem;
+            margin-bottom: 0.75rem;
+            color: #374151;
+        }
+
+        p, ul {
+            margin-bottom: 1rem;
+        }
+        
+        ul {
+            list-style-position: inside;
+            padding-left: 1rem;
+        }
+        
+        li::marker {
+            color: var(--primary-color);
+        }
+
+        strong, b {
+            font-weight: 600;
+        }
+
+        /* --- Code Blocks --- */
+        code {
+            font-family: "SF Mono", "Fira Code", monospace;
+            background-color: var(--border-color);
+            padding: 0.2em 0.4em;
+            border-radius: 6px;
+            font-size: 0.9em;
+        }
+
+        .code-block-wrapper {
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        pre {
+            background-color: var(--code-bg-color);
+            color: var(--code-text-color);
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            border-radius: 0;
+            font-size: 1em; /* ให้ขนาดเท่า pre */
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background-color: #4b5563;
+            color: #e5e7eb;
+            border: none;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: var(--font-family);
+            font-size: 0.8rem;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+        
+        .copy-btn:hover {
+            background-color: #6b7280;
+        }
+        
+        .copy-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .copy-btn.copied {
+            background-color: #16a34a; /* สีเขียวเมื่อคัดลอกสำเร็จ */
+        }
+        
+        /* --- SVG & Canvas --- */
+        .diagram-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #fff;
+            padding: 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-top: 1.5rem;
+        }
+        
+        canvas#command-diagram {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>การจัดการ Objects ใน Kubernetes Namespaces</h1>
+        </header>
+
+        <main>
+            <section aria-labelledby="summary-heading">
+                <h2 id="summary-heading">สรุปการจัดการ Objects</h2>
+                <p>
+                    ใน Kubernetes เราสามารถสร้างทรัพยากร (resources) เช่น <strong>Pod</strong> ให้อยู่ใน <strong>namespace</strong> ที่เราต้องการได้ครับ มีสองวิธีหลักๆ คือ:
+                </p>
+                <ul>
+                    <li><strong>ระบุในไฟล์ YAML:</strong> เพิ่ม <code>namespace: ชื่อ-namespace</code> เข้าไปในส่วน <code>metadata</code> ของไฟล์ config</li>
+                    <li><strong>ใช้ Flag ตอนรันคำสั่ง:</strong> ใช้ flag <code>--namespace</code> หรือ <code>-n</code> ต่อท้ายคำสั่ง <code>kubectl</code> ตอนสร้าง resource</li>
+                </ul>
+
+                <div class="diagram-container" aria-label="Diagram showing two separate namespaces">
+                    <svg width="200" height="80" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="svg-title">
+                        <title id="svg-title">SVG Diagram of Kubernetes Namespaces</title>
+                        <g fill="#4f46e5" fill-opacity="0.1" stroke="#4f46e5" stroke-width="1.5">
+                            <rect x="10" y="10" width="80" height="60" rx="8"></rect>
+                            <rect x="110" y="10" width="80" height="60" rx="8"></rect>
+                        </g>
+                        <text x="28" y="45" font-family="sans-serif" font-size="10" fill="#312e81">default-ns</text>
+                        <text x="123" y="45" font-family="sans-serif" font-size="10" fill="#312e81">custom-ns</text>
+                    </svg>
+                </div>
+                
+                <p>
+                    เมื่อเรามี <strong>Pod</strong> ที่ชื่อเหมือนกันแต่อยู่คนละ <code>namespace</code> เวลาจะจัดการ (เช่น ดู, แก้ไข, ลบ) object ที่ไม่ได้อยู่ใน <code>default namespace</code> เราจำเป็นต้องใช้ flag <code>-n</code> หรือ <code>--namespace</code> ทุกครั้ง
+                </p>
+                <p>
+                    <strong>💡 เคล็ดลับ:</strong> เราสามารถสร้าง <code>alias</code> (คำสั่งย่อ) เพื่อให้สลับ <code>namespace</code> ที่ใช้งานได้เร็วขึ้นได้ด้วยครับ
+                </p>
+            </section>
+
+            <section aria-labelledby="code-examples-heading">
+                <h2 id="code-examples-heading">ตัวอย่าง Code</h2>
+                
+                <article aria-labelledby="create-pod-heading">
+                    <h3 id="create-pod-heading">1. การสร้าง Pod ใน Namespace ที่ระบุ</h3>
+                    <div class="code-block-wrapper">
+                        <pre><code class="language-bash"># สร้าง resource จากไฟล์ kubia-manual.yaml 
+# โดยใช้ flag -n เพื่อระบุให้ไปสร้างใน "custom-namespace"
+$ kubectl create -f kubia-manual.yaml -n custom-namespace</code></pre>
+                        <button class="copy-btn" aria-label="คัดลอกคำสั่งสร้าง Pod">คัดลอก</button>
+                    </div>
+                </article>
+
+                <article aria-labelledby="create-alias-heading">
+                    <h3 id="create-alias-heading">2. การสร้าง Alias สำหรับสลับ Namespace</h3>
+                     <div class="code-block-wrapper">
+                        <pre><code class="language-bash"># สร้างคำสั่งย่อชื่อ 'kcd' สำหรับเปลี่ยน default namespace ใน context ปัจจุบัน
+$ alias kcd='kubectl config set-context $(kubectl config current-context) --namespace '</code></pre>
+                        <button class="copy-btn" aria-label="คัดลอกคำสั่งสร้าง Alias">คัดลอก</button>
+                    </div>
+                    <div class="code-block-wrapper">
+                        <pre><code class="language-bash"># ตัวอย่างการใช้งาน: สลับไปใช้ some-namespace
+$ kcd some-namespace</code></pre>
+                        <button class="copy-btn" aria-label="คัดลอกคำสั่งใช้งาน Alias">คัดลอก</button>
+                    </div>
+                </article>
+            </section>
+
+            <section aria-labelledby="canvas-diagram-heading">
+                <h2 id="canvas-diagram-heading">ภาพประกอบคำสั่ง</h2>
+                <div class="diagram-container">
+                    <canvas id="command-diagram" width="400" height="200" aria-label="Canvas diagram illustrating kubectl command targeting a specific namespace"></canvas>
+                </div>
+            </section>
+
+        </main>
+
+    </div>
+
+    <script>
+        // --- Utility Functions (ฟังก์ชันตัวช่วย) ---
+
+        /**
+         * คัดลอกข้อความไปยัง Clipboard
+         * @param {string} text - ข้อความที่ต้องการคัดลอก
+         * @returns {Promise<void>}
+         */
+        const copyToClipboard = async (text) => {
+            if (navigator.clipboard) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                } catch (err) {
+                    console.error('Failed to copy text with navigator.clipboard: ', err);
+                    fallbackCopyToClipboard(text); // ใช้ fallback กรณี error
+                }
+            } else {
+                fallbackCopyToClipboard(text); // ใช้ fallback กรณี browser ไม่รองรับ
+            }
+        };
+        
+        /**
+         * Fallback สำหรับคัดลอกข้อความใน browser รุ่นเก่า
+         * @param {string} text - ข้อความที่ต้องการคัดลอก
+         */
+        const fallbackCopyToClipboard = (text) => {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed"; // ป้องกันการเลื่อนหน้าจอ
+            textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+            } catch (err) {
+                console.error('Fallback: Oops, unable to copy', err);
+            }
+            document.body.removeChild(textArea);
+        };
+
+        /**
+         * วาด Diagram การทำงานของคำสั่ง kubectl บน Canvas
+         * @param {HTMLCanvasElement} canvas - Element ของ canvas
+         */
+        const drawNamespaceDiagram = (canvas) => {
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // เคลียร์ canvas ก่อนวาด
+            ctx.clearRect(0, 0, width, height);
+
+            // --- ตั้งค่าสไตล์ ---
+            ctx.strokeStyle = '#374151';
+            ctx.fillStyle = '#6b7280';
+            ctx.font = '14px sans-serif';
+            ctx.lineWidth = 2;
+
+            // --- วาดกล่อง Namespace ---
+            const nsWidth = 120;
+            const nsHeight = 80;
+            const defaultNsX = 30;
+            const customNsX = width - nsWidth - 30;
+            const nsY = (height - nsHeight) / 2;
+
+            // Default NS
+            ctx.strokeRect(defaultNsX, nsY, nsWidth, nsHeight);
+            ctx.fillText('default-ns', defaultNsX + 25, nsY + 45);
+
+            // Custom NS
+            ctx.strokeStyle = '#2563eb'; // สีหลัก
+            ctx.strokeRect(customNsX, nsY, nsWidth, nsHeight);
+            ctx.fillStyle = '#2563eb';
+            ctx.fillText('custom-ns', customNsX + 25, nsY + 45);
+
+            // --- วาดลูกศรและคำสั่ง ---
+            ctx.beginPath();
+            ctx.moveTo(width / 2 - 50, height / 2);
+            ctx.lineTo(customNsX - 10, height / 2);
+            ctx.lineTo(customNsX - 20, height / 2 - 5);
+            ctx.moveTo(customNsX - 10, height / 2);
+            ctx.lineTo(customNsX - 20, height / 2 + 5);
+            ctx.strokeStyle = '#ef4444'; // สีแดง
+            ctx.stroke();
+            
+            // --- ข้อความคำสั่ง ---
+            ctx.fillStyle = '#ef4444';
+            ctx.font = '12px "SF Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('kubectl ... -n custom-ns', width / 2, height / 2 - 10);
+        };
+
+        // --- Event Listeners (ตัวจัดการเหตุการณ์) ---
+
+        /**
+         * ติดตั้ง Event Listener ทั้งหมดเมื่อ DOM โหลดเสร็จ
+         */
+        const setupEventListeners = () => {
+            // จัดการปุ่มคัดลอก
+            document.querySelectorAll('.copy-btn').forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    const wrapper = e.target.closest('.code-block-wrapper');
+                    const codeElement = wrapper.querySelector('code');
+                    const textToCopy = codeElement.innerText;
+
+                    await copyToClipboard(textToCopy);
+
+                    // แสดงผลตอบรับว่าคัดลอกแล้ว
+                    const originalText = button.textContent;
+                    button.textContent = 'คัดลอกแล้ว!';
+                    button.classList.add('copied');
+                    
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                        button.classList.remove('copied');
+                    }, 2000);
+                });
+            });
+
+            // วาด Canvas
+            const canvas = document.getElementById('command-diagram');
+            if (canvas) {
+                drawNamespaceDiagram(canvas);
+            }
+        };
+
+        // --- Main Execution (เริ่มการทำงาน) ---
+        document.addEventListener('DOMContentLoaded', setupEventListeners);
+
+    </script>
+</body>
+</html>

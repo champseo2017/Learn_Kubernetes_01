@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>การหยุดและลบ Pods ใน Kubernetes</title>
+    <style>
+        /* --- ตัวแปรสำหรับสไตล์ --- */
+        :root {
+            --bg-color: #f9fafb;
+            --text-color: #111827;
+            --primary-color: #059669; /* Emerald Green */
+            --primary-hover-color: #047857;
+            --accent-color-red: #dc2626;
+            --border-color: #e5e7eb;
+            --code-bg-color: #1f2937;
+            --code-text-color: #e5e7eb;
+            --header-color: #1f2937;
+            --subtle-text-color: #6b7280;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        /* --- Reset และดีไซน์พื้นฐาน --- */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.65;
+            font-size: 16px;
+        }
+
+        /* --- โครงสร้าง Layout --- */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2.5rem 1.5rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        main {
+            display: grid;
+            gap: 3rem;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 3.5rem;
+            padding-top: 2rem;
+            font-size: 0.9em;
+            color: var(--subtle-text-color);
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* --- สไตล์ตัวอักษร --- */
+        h1, h2, h3 {
+            line-height: 1.3;
+            color: var(--header-color);
+            font-weight: 700;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            margin-bottom: 1.25rem;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 0.5rem;
+        }
+        
+        h3 {
+            font-size: 1.25rem;
+            margin-bottom: 0.75rem;
+            color: #374151;
+        }
+
+        p {
+            margin-bottom: 1.25rem;
+        }
+        
+        strong, b {
+            font-weight: 600;
+        }
+
+        /* --- Code Blocks --- */
+        code {
+            font-family: "SF Mono", "Fira Code", monospace;
+            background-color: #f3f4f6;
+            padding: 0.2em 0.4em;
+            border-radius: 6px;
+            font-size: 0.9em;
+        }
+
+        .code-block-wrapper {
+            position: relative;
+            margin-bottom: 1.25rem;
+        }
+
+        pre {
+            background-color: var(--code-bg-color);
+            color: var(--code-text-color);
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+        
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            border-radius: 0;
+        }
+        
+        .copy-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background-color: #4b5563;
+            color: #e5e7eb;
+            border: none;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: var(--font-family);
+            font-size: 0.8rem;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+        
+        .copy-btn:hover {
+            background-color: #6b7280;
+        }
+        
+        .copy-btn.copied {
+            background-color: var(--primary-color);
+        }
+
+        /* --- องค์ประกอบพิเศษ --- */
+        .tip-box {
+            background-color: #ecfdf5; /* Light green */
+            border-left: 4px solid var(--primary-color);
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        /* --- SVG & Canvas --- */
+        .diagram-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #ffffff;
+            padding: 1.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-top: 1.5rem;
+            min-height: 120px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>การหยุดและลบ Pods ใน Kubernetes</h1>
+        </header>
+
+        <main>
+            <section aria-labelledby="summary-heading">
+                <h2 id="summary-heading">สรุปขั้นตอนการลบ Pod</h2>
+                <p>
+                    เมื่อเราไม่ต้องการใช้ <strong>Pod</strong> แล้ว เราสามารถสั่งลบได้โดยตรง ซึ่งวิธีที่ง่ายที่สุดคือการลบโดยระบุชื่อ การสั่งลบ Pod จะเป็นการสั่งให้ Kubernetes หยุดการทำงานของ <strong>container</strong> ทั้งหมดที่อยู่ภายใน Pod นั้น
+                </p>
+
+                <div class="diagram-container" aria-label="Diagram showing a Pod being marked for deletion">
+                     <svg width="150" height="80" viewBox="0 0 150 80" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="svg-title">
+                        <title id="svg-title">Pod Deletion Icon</title>
+                        <rect x="10" y="15" width="80" height="50" rx="8" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+                        <text x="38" y="45" font-family="sans-serif" font-size="14" fill="#1e40af">Pod</text>
+                        <g stroke-width="4" stroke-linecap="round" stroke="#dc2626">
+                           <line x1="110" y1="25" x2="140" y2="55"/>
+                           <line x1="140" y1="25" x2="110" y2="55"/>
+                        </g>
+                    </svg>
+                </div>
+            </section>
+
+            <section aria-labelledby="lifecycle-heading">
+                <h2 id="lifecycle-heading">วงจรการปิด Pod (Termination Lifecycle)</h2>
+                <p>
+                    เมื่อสั่งลบ Pod, Kubernetes จะส่งสัญญาณ <strong>SIGTERM</strong> เพื่อให้แอปพลิเคชันปิดตัวเองอย่างเรียบร้อย (Graceful Shutdown) หากแอปไม่ปิดในเวลาที่กำหนด (ปกติ 30 วินาที) ระบบจะส่ง <strong>SIGKILL</strong> เพื่อบังคับปิดทันที
+                </p>
+                <div class="diagram-container">
+                    <canvas id="termination-lifecycle-canvas" width="600" height="100" aria-label="Diagram showing the Pod termination lifecycle from SIGTERM to SIGKILL"></canvas>
+                </div>
+            </section>
+
+            <section aria-labelledby="code-examples-heading">
+                <h2 id="code-examples-heading">ตัวอย่างคำสั่ง</h2>
+                
+                <article aria-labelledby="delete-single-pod-heading">
+                    <h3 id="delete-single-pod-heading">1. การลบ Pod เดียวโดยระบุชื่อ</h3>
+                    <div class="code-block-wrapper">
+                        <pre><code class="language-bash"># สั่งลบ pod ที่ชื่อว่า "kubia-gpu"
+# po เป็นคำย่อของ pods
+$ kubectl delete po kubia-gpu</code></pre>
+                        <button class="copy-btn" aria-label="คัดลอกคำสั่งลบ Pod เดียว">คัดลอก</button>
+                    </div>
+                </article>
+
+                <article aria-labelledby="delete-multiple-pods-heading">
+                    <h3 id="delete-multiple-pods-heading">2. การลบหลาย Pod พร้อมกัน</h3>
+                    <div class="tip-box">
+                        <p><strong>💡 เคล็ดลับ:</strong> เราสามารถลบหลาย Pod พร้อมกันได้โดยการพิมพ์ชื่อ Pod ต่อกันโดยคั่นด้วยช่องว่าง</p>
+                    </div>
+                    <div class="code-block-wrapper">
+                        <pre><code class="language-bash"># สั่งลบ pod ที่ชื่อ pod1 และ pod2 ในคำสั่งเดียว
+$ kubectl delete po pod1 pod2</code></pre>
+                        <button class="copy-btn" aria-label="คัดลอกคำสั่งลบหลาย Pod">คัดลอก</button>
+                    </div>
+                </article>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // --- Utility Functions (ฟังก์ชันตัวช่วย) ---
+
+        /**
+         * คัดลอกข้อความไปยัง Clipboard พร้อม Fallback
+         * @param {string} text - ข้อความที่ต้องการคัดลอก
+         * @returns {Promise<void>}
+         */
+        const copyToClipboard = async (text) => {
+            if (navigator.clipboard) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                } catch (err) {
+                    console.error('ไม่สามารถคัดลอกด้วย navigator.clipboard: ', err);
+                }
+            } else {
+                // Fallback สำหรับ browser ที่ไม่รองรับ
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                textArea.style.position = "fixed";
+                textArea.style.opacity = "0";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                } catch (err) {
+                    console.error('Fallback: ไม่สามารถคัดลอกได้', err);
+                }
+                document.body.removeChild(textArea);
+            }
+        };
+
+        // --- Renderer & Animation Functions (ฟังก์ชันวาดและเคลื่อนไหว) ---
+        
+        /**
+         * วาดและสร้าง Animation วงจรการปิด Pod บน Canvas
+         * @param {HTMLCanvasElement} canvas - Element ของ canvas
+         */
+        const animateTerminationLifecycle = (canvas) => {
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            const width = canvas.width;
+            const height = canvas.height;
+            const timelineY = height / 2;
+            const startX = 50;
+            const sigtermX = 150;
+            const sigkillX = width - 80;
+            const gracePeriodWidth = sigkillX - sigtermX;
+            let progress = 0; // 0 to 1
+            let startTime = null;
+            const animationDuration = 4000; // 4 วินาที
+
+            const draw = (timestamp) => {
+                if (!startTime) startTime = timestamp;
+                const elapsedTime = timestamp - startTime;
+                progress = Math.min(elapsedTime / animationDuration, 1);
+
+                ctx.clearRect(0, 0, width, height);
+
+                // --- วาด Timeline หลัก ---
+                ctx.beginPath();
+                ctx.moveTo(startX, timelineY);
+                ctx.lineTo(width - startX, timelineY);
+                ctx.strokeStyle = '#9ca3af';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // --- วาด Progress Bar ของ Grace Period ---
+                ctx.beginPath();
+                ctx.moveTo(sigtermX, timelineY);
+                ctx.lineTo(sigtermX + (gracePeriodWidth * progress), timelineY);
+                ctx.strokeStyle = '#f59e0b'; // Amber color
+                ctx.lineWidth = 4;
+                ctx.stroke();
+
+                // --- วาดจุดเหตุการณ์ ---
+                const drawEvent = (x, color, label, labelBelow = '') => {
+                    ctx.beginPath();
+                    ctx.arc(x, timelineY, 8, 0, 2 * Math.PI);
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                    ctx.font = 'bold 12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(label, x, timelineY - 20);
+                    if (labelBelow) {
+                         ctx.font = '12px sans-serif';
+                         ctx.fillStyle = '#6b7280';
+                         ctx.fillText(labelBelow, x, timelineY + 30);
+                    }
+                };
+
+                drawEvent(startX, '#10b981', 'Running');
+                drawEvent(sigtermX, '#f59e0b', 'SIGTERM Sent', 'Graceful Shutdown (30s)');
+                
+                // วาด SIGKILL เมื่อ animation จบ
+                if (progress === 1) {
+                    drawEvent(sigkillX, '#ef4444', 'SIGKILL Sent', 'Forced Termination');
+                } else {
+                     drawEvent(sigkillX, '#9ca3af', 'SIGKILL');
+                }
+
+                if (progress < 1) {
+                    requestAnimationFrame(draw);
+                }
+            };
+            
+            // เริ่ม Animation loop
+            requestAnimationFrame(draw);
+        };
+
+        // --- Event Listener Setup ---
+
+        /**
+         * ติดตั้ง Event Listener ทั้งหมดเมื่อ DOM โหลดเสร็จ
+         */
+        const setupEventListeners = () => {
+            // จัดการปุ่มคัดลอก
+            document.querySelectorAll('.copy-btn').forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    const wrapper = e.target.closest('.code-block-wrapper');
+                    const codeElement = wrapper.querySelector('code');
+                    
+                    await copyToClipboard(codeElement.innerText);
+
+                    // แสดงผลตอบรับว่าคัดลอกแล้ว
+                    const originalText = button.textContent;
+                    button.textContent = 'คัดลอกแล้ว!';
+                    button.classList.add('copied');
+                    
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                        button.classList.remove('copied');
+                    }, 2000);
+                });
+            });
+        };
+
+        // --- Main Execution (เริ่มการทำงาน) ---
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            const canvas = document.getElementById('termination-lifecycle-canvas');
+            if (canvas instanceof HTMLCanvasElement) {
+                animateTerminationLifecycle(canvas);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>การลบ Pods และ Namespaces ใน Kubernetes</title>
+    <style>
+        /* --- ตัวแปรสำหรับสไตล์ --- */
+        :root {
+            --bg-color: #f9fafb;
+            --text-color: #111827;
+            --primary-color: #be123c; /* Rose Red */
+            --primary-hover-color: #9f1239;
+            --border-color: #e5e7eb;
+            --code-bg-color: #1f2937;
+            --code-text-color: #e5e7eb;
+            --header-color: #1f2937;
+            --subtle-text-color: #6b7280;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        /* --- Reset และดีไซน์พื้นฐาน --- */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.7;
+            font-size: 16px;
+        }
+
+        /* --- โครงสร้าง Layout --- */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2.5rem 1.5rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3.5rem;
+        }
+
+        main {
+            display: grid;
+            gap: 3rem;
+        }
+
+        section {
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+            border: 1px solid var(--border-color);
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 3.5rem;
+            padding-top: 2rem;
+            font-size: 0.9em;
+            color: var(--subtle-text-color);
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* --- สไตล์ตัวอักษร --- */
+        h1, h2, h3 {
+            line-height: 1.3;
+            color: var(--header-color);
+            font-weight: 700;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        h3 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: #374151;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        p {
+            margin-bottom: 1.25rem;
+        }
+        
+        ul {
+            list-style-position: inside;
+            padding-left: 0.5rem;
+            margin-bottom: 1.25rem;
+        }
+        li {
+            margin-bottom: 0.5rem;
+        }
+        
+        strong, b {
+            font-weight: 600;
+        }
+
+        /* --- Code Blocks --- */
+        code {
+            font-family: "SF Mono", "Fira Code", monospace;
+            background-color: #f3f4f6;
+            color: var(--primary-color);
+            padding: 0.2em 0.4em;
+            border-radius: 6px;
+            font-size: 0.9em;
+        }
+
+        .code-block-wrapper {
+            position: relative;
+        }
+
+        pre {
+            background-color: var(--code-bg-color);
+            color: var(--code-text-color);
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+        
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            color: inherit;
+        }
+        
+        .copy-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background-color: #4b5563;
+            color: #e5e7eb;
+            border: none;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: var(--font-family);
+            font-size: 0.8rem;
+            transition: background-color 0.2s ease;
+        }
+        
+        .copy-btn:hover {
+            background-color: #6b7280;
+        }
+        
+        .copy-btn.copied {
+            background-color: var(--primary-color);
+        }
+
+        /* --- องค์ประกอบพิเศษ --- */
+        .diagram-container {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            justify-content: center;
+            align-items: center;
+            background-color: #f9fafb;
+            padding: 2rem;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin-top: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>การลบ Pods และ Namespaces</h1>
+            <p style="color: var(--subtle-text-color); font-size: 1.1rem; margin-top: 0.5rem;">สรุปการจัดการทรัพยากรด้วย Label และ Namespace</p>
+        </header>
+
+        <main>
+            <section aria-labelledby="image-summary-heading">
+                <h2 id="image-summary-heading">สรุปจากรูปภาพ: การใช้ Label Selector</h2>
+                <p>
+                    ในระบบที่มี <strong>Pods</strong> จำนวนมาก การจัดกลุ่มด้วย <strong>Labels</strong> เป็นสิ่งสำคัญมาก โดยมักจะแบ่งตาม 2 ประเภทหลัก:
+                </p>
+                <ul>
+                    <li><code>app</code>: ใช้บอกว่าเป็น Pod ของ service ไหน (เช่น Account Service, Product Catalog)</li>
+                    <li><code>rel</code>: ใช้บอกว่าเป็น release เวอร์ชั่นไหน (เช่น <code>stable</code>, <code>beta</code>, หรือ <code>canary</code>)</li>
+                </ul>
+                <p>
+                    เราสามารถใช้ Label Selector เช่น <code>rel=canary</code> เพื่อเลือกและลบ Pods ทั้งหมดที่เป็นเวอร์ชันทดสอบได้พร้อมกันในครั้งเดียว โดยไม่กระทบกับ Pods ที่เป็นเวอร์ชันอื่นเลย
+                </p>
+            </section>
+            
+            <section aria-labelledby="namespace-deletion-heading">
+                <h2 id="namespace-deletion-heading">การลบ Pods โดยการลบ Namespace</h2>
+                <p>
+                    สำหรับ Pod ที่อยู่ใน <code>custom-namespace</code> หากเราไม่ต้องการใช้งานทั้ง Pods และ Namespace นั้นอีกต่อไป วิธีที่ง่ายและรวดเร็วที่สุดคือการลบ Namespace ทั้งหมดทิ้งไป
+                </p>
+                <p>
+                    เมื่อเราสั่งลบ Namespace ทรัพยากรทุกอย่างที่อยู่ข้างใน (เช่น <strong>Pods</strong>, <strong>Services</strong>) จะถูกลบตามไปด้วยโดยอัตโนมัติ ซึ่งเป็นวิธีที่สะดวกมากในการเคลียร์สภาพแวดล้อมที่ไม่ใช้แล้ว
+                </p>
+                <div class="diagram-container">
+                    <!-- SVG Icon -->
+                    <svg width="250" height="100" viewBox="0 0 250 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="svg-title">
+                        <title id="svg-title">Namespace Deletion Diagram</title>
+                        <g>
+                            <rect x="10" y="10" width="130" height="80" rx="8" fill="#fef2f2" stroke="#ef4444" stroke-width="2" stroke-dasharray="4,4"/>
+                            <text x="35" y="30" font-family="sans-serif" font-size="14" fill="#7f1d1d">Namespace</text>
+                             <!-- Pods inside -->
+                            <rect x="30" y="45" width="40" height="25" rx="4" fill="#fee2e2"/>
+                            <rect x="80" y="45" width="40" height="25" rx="4" fill="#fee2e2"/>
+                        </g>
+                        <g>
+                             <!-- Delete action -->
+                            <line x1="160" y1="50" x2="200" y2="50" stroke="#9ca3af" stroke-width="2"/>
+                            <polygon points="200,50 192,46 192,54" fill="#9ca3af"/>
+                            <text x="160" y="40" font-family="sans-serif" font-size="12" fill="#6b7280">Delete</text>
+                        </g>
+                        <g>
+                            <line x1="215" y1="35" x2="245" y2="65" stroke="#be123c" stroke-width="4" stroke-linecap="round"/>
+                            <line x1="245" y1="35" x2="215" y2="65" stroke="#be123c" stroke-width="4" stroke-linecap="round"/>
+                        </g>
+                    </svg>
+                    <!-- Canvas Diagram -->
+                    <canvas id="namespace-deletion-canvas" width="400" height="120" aria-label="Canvas animation showing a namespace and its pods being deleted."></canvas>
+                </div>
+            </section>
+
+            <section aria-labelledby="code-example-heading">
+                <h2 id="code-example-heading">ตัวอย่างคำสั่ง</h2>
+                <div class="code-block-wrapper">
+                    <pre><code class="language-bash"># สั่งลบ namespace ที่ชื่อว่า "custom-namespace"
+# ns เป็นคำย่อของ namespaces
+# เมื่อรันคำสั่งนี้ ทุกอย่างที่อยู่ใน namespace นี้จะถูกลบไปด้วย
+$ kubectl delete ns custom-namespace</code></pre>
+                    <button class="copy-btn" aria-label="คัดลอกคำสั่งลบ Namespace">คัดลอก</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // --- Utility Functions (ฟังก์ชันตัวช่วย) ---
+
+        /**
+         * คัดลอกข้อความไปยัง Clipboard
+         * @param {string} text - ข้อความที่ต้องการคัดลอก
+         */
+        const copyToClipboard = (text) => {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed"; 
+            textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+            } catch (err) {
+                console.error('ไม่สามารถคัดลอกได้', err);
+            }
+            document.body.removeChild(textArea);
+        };
+
+        // --- Renderer & Animation Functions (ฟังก์ชันวาดและเคลื่อนไหว) ---
+        
+        /**
+         * วาดและสร้าง Animation การลบ Namespace บน Canvas
+         * @param {HTMLCanvasElement} canvas - Element ของ canvas
+         */
+        const drawNamespaceDeletionAnimation = (canvas) => {
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            let progress = 0;
+            let startTime = null;
+            const duration = 2500; // 2.5 วินาที
+
+            const draw = (timestamp) => {
+                if (!startTime) startTime = timestamp;
+                const elapsed = timestamp - startTime;
+                progress = Math.min(elapsed / duration, 1);
+                
+                // คำนวณความโปร่งใสที่จะค่อยๆ จางหายไป
+                const alpha = 1 - progress;
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.globalAlpha = alpha;
+
+                // --- วาด Namespace ---
+                ctx.strokeStyle = '#ef4444';
+                ctx.fillStyle = '#fef2f2';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(50, 10, 300, 100, [8]);
+                ctx.stroke();
+                ctx.fill();
+
+                // --- วาด Pods ข้างใน ---
+                ctx.fillStyle = '#fee2e2';
+                ctx.beginPath();
+                ctx.roundRect(100, 40, 70, 40, [4]);
+                ctx.fill();
+                ctx.roundRect(230, 40, 70, 40, [4]);
+                ctx.fill();
+
+                // --- วาดตัวหนังสือ ---
+                ctx.fillStyle = `rgba(127, 29, 29, ${alpha})`; // ทำให้ตัวหนังสือจางไปพร้อมกัน
+                ctx.font = 'bold 16px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Namespace: custom-namespace', 200, 30);
+                
+                ctx.font = '12px sans-serif';
+                ctx.fillText('Pod A', 135, 65);
+                ctx.fillText('Pod B', 265, 65);
+                
+                // --- วาดเครื่องหมาย X เมื่อเริ่มจาง ---
+                if (progress > 0.1) {
+                    ctx.globalAlpha = progress; // ให้ X ค่อยๆ ชัดขึ้น
+                    ctx.strokeStyle = '#be123c';
+                    ctx.lineWidth = 8;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(50, 10);
+                    ctx.lineTo(350, 110);
+                    ctx.moveTo(350, 10);
+                    ctx.lineTo(50, 110);
+                    ctx.stroke();
+                }
+
+                if (progress < 1) {
+                    requestAnimationFrame(draw);
+                }
+            };
+            
+            requestAnimationFrame(draw);
+        };
+
+        // --- Event Listener Setup ---
+
+        /**
+         * ติดตั้ง Event Listener ทั้งหมดเมื่อ DOM โหลดเสร็จ
+         */
+        const setupEventListeners = () => {
+            const copyButton = document.querySelector('.copy-btn');
+            if (copyButton) {
+                copyButton.addEventListener('click', (e) => {
+                    const wrapper = e.target.closest('.code-block-wrapper');
+                    const codeElement = wrapper.querySelector('code');
+                    
+                    copyToClipboard(codeElement.innerText);
+
+                    const originalText = e.target.textContent;
+                    e.target.textContent = 'คัดลอกแล้ว!';
+                    e.target.classList.add('copied');
+                    
+                    setTimeout(() => {
+                        e.target.textContent = originalText;
+                        e.target.classList.remove('copied');
+                    }, 2000);
+                });
+            }
+        };
+
+        // --- Main Execution (เริ่มการทำงาน) ---
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            const canvas = document.getElementById('namespace-deletion-canvas');
+            if (canvas instanceof HTMLCanvasElement) {
+                // Polyfill สำหรับ roundRect ถ้า browser ไม่รองรับ
+                if (!CanvasRenderingContext2D.prototype.roundRect) {
+                    console.warn('เบราว์เซอร์นี้ไม่รองรับ roundRect บน canvas');
+                }
+                drawNamespaceDeletionAnimation(canvas);
+            }
+        });
+    </script>
+</body>
+</html>

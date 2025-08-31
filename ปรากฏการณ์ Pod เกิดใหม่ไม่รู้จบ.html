@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>การจัดการ Pods ด้วย ReplicationController</title>
+    <style>
+        /* --- ตัวแปรสำหรับสไตล์ --- */
+        :root {
+            --bg-color: #f8fafc;
+            --text-color: #0f172a;
+            --primary-color: #6d28d9; /* Violet */
+            --primary-hover-color: #5b21b6;
+            --border-color: #e2e8f0;
+            --code-bg-color: #1e293b;
+            --code-text-color: #e2e8f0;
+            --header-color: #1e293b;
+            --subtle-text-color: #64748b;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            --success-color: #16a34a;
+            --error-color: #dc2626;
+            --warning-color: #f59e0b;
+        }
+
+        /* --- Reset และดีไซน์พื้นฐาน --- */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.7;
+            font-size: 16px;
+        }
+
+        /* --- โครงสร้าง Layout --- */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2.5rem 1.5rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3.5rem;
+        }
+
+        main {
+            display: grid;
+            gap: 3rem;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 3.5rem;
+            padding-top: 2rem;
+            font-size: 0.9em;
+            color: var(--subtle-text-color);
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* --- สไตล์ตัวอักษร --- */
+        h1, h2, h3 {
+            line-height: 1.3;
+            color: var(--header-color);
+            font-weight: 700;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        h3 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: #334155;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        p {
+            margin-bottom: 1.25rem;
+        }
+        
+        strong, b {
+            font-weight: 600;
+        }
+
+        /* --- Code Blocks --- */
+        .code-block-wrapper {
+            position: relative;
+        }
+
+        pre {
+            background-color: var(--code-bg-color);
+            color: var(--code-text-color);
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background-color: #475569;
+            color: #f1f5f9;
+            border: none;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: var(--font-family);
+            font-size: 0.8rem;
+            transition: background-color 0.2s ease;
+        }
+
+        .copy-btn:hover {
+            background-color: var(--primary-color);
+        }
+        
+        .copy-btn.copied {
+            background-color: var(--success-color);
+        }
+
+        /* --- องค์ประกอบพิเศษ --- */
+        .highlight-box {
+            background-color: #f5f3ff; /* Light violet */
+            border-left: 4px solid var(--primary-color);
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .diagram-container {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            justify-content: center;
+            align-items: center;
+            background-color: #ffffff;
+            padding: 2rem;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin-top: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>ปรากฏการณ์ Pod เกิดใหม่ไม่รู้จบ</h1>
+            <p style="color: var(--subtle-text-color); font-size: 1.1rem; margin-top: 0.5rem;">ทำความเข้าใจเบื้องหลังการทำงานของ ReplicationController</p>
+        </header>
+
+        <main>
+            <section aria-labelledby="summary-heading">
+                <h2 id="summary-heading">สรุปสถานการณ์: ยิ่งลบ ยิ่งเกิด</h2>
+                <p>
+                    บางครั้งเมื่อเราต้องการล้าง Pod ทั้งหมดใน Namespace ด้วยคำสั่ง <code>kubectl delete po --all</code> อาจจะพบกับเรื่องน่าประหลาดใจ คือ Pod เก่ากำลังถูกลบ (สถานะ <code>Terminating</code>) แต่กลับมี Pod ตัวใหม่โผล่ขึ้นมาแทนที่ทันที
+                </p>
+                <div class="highlight-box">
+                    <p><strong>สาเหตุคืออะไร?</strong> ปรากฏการณ์นี้เกิดขึ้นเพราะ Pod นั้นไม่ได้ถูกสร้างขึ้นมาโดยตรง แต่ถูกควบคุมโดย Resource อื่นที่ทำงานอยู่เบื้องหลัง เช่น <strong>ReplicationController</strong></p>
+                </div>
+                <p>
+                    หน้าที่ของ <strong>ReplicationController</strong> คือการ "ดูแล" ให้มีจำนวน Pod ที่ต้องการทำงานอยู่ตลอดเวลา เมื่อมันตรวจพบว่า Pod ที่ดูแลอยู่หายไป (เพราะเราลบ) มันก็จะสร้างตัวใหม่ขึ้นมาทดแทนทันที ดังนั้น หากต้องการลบ Pod ให้หายถาวร เราต้องไปลบที่ตัว Controller ครับ
+                </p>
+            </section>
+            
+            <section aria-labelledby="diagram-heading">
+                <h2 id="diagram-heading">ภาพประกอบการทำงาน</h2>
+                <div class="diagram-container">
+                    <!-- SVG Icon -->
+                    <svg width="300" height="120" viewBox="0 0 300 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="svg-title">
+                        <title id="svg-title">ReplicationController Loop Diagram</title>
+                        <g>
+                            <!-- ReplicationController -->
+                            <rect x="10" y="35" width="130" height="50" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+                            <text x="20" y="62" font-family="sans-serif" font-size="12" font-weight="bold" fill="#5b21b6">ReplicationController</text>
+                            
+                            <!-- Pod -->
+                            <rect x="200" y="35" width="80" height="50" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+                            <text x="228" y="62" font-family="sans-serif" font-size="14" fill="#14532d">Pod</text>
+                            
+                            <!-- Arrow: Creates -->
+                            <path d="M 142 50 C 160 30, 180 30, 198 45" stroke="#4a5568" stroke-width="1.5" fill="none"/>
+                            <polygon points="198,45 195,38 190,45" fill="#4a5568"/>
+                            <text x="150" y="35" font-size="10" fill="#4a5568">Creates</text>
+                            
+                            <!-- Arrow: Watches -->
+                            <path d="M 198 75 C 180 95, 160 95, 142 70" stroke="#4a5568" stroke-width="1.5" fill="none" stroke-dasharray="3,2"/>
+                            <polygon points="142,70 145,77 150,70" fill="#4a5568"/>
+                            <text x="150" y="95" font-size="10" fill="#4a5568">Watches</text>
+                        </g>
+                    </svg>
+                    <!-- Canvas Diagram -->
+                    <canvas id="replication-loop-canvas" width="500" height="150" aria-label="Canvas animation showing the replication loop of a controller deleting and recreating a pod."></canvas>
+                </div>
+            </section>
+
+            <section aria-labelledby="code-examples-heading">
+                <h2 id="code-examples-heading">ลำดับคำสั่งและผลลัพธ์</h2>
+                <div class="code-block-wrapper">
+                    <pre><code># 1. ตรวจสอบ Pod ที่กำลังทำงานอยู่
+$ kubectl get pods
+NAME          READY   STATUS    RESTARTS   AGE
+kubia-zxzij   1/1     Running   0          1d
+
+# 2. สั่งลบ Pod ทั้งหมด
+$ kubectl delete po --all
+pod "kubia-zxzij" deleted
+
+# 3. ตรวจสอบอีกครั้งและพบว่ามี Pod ใหม่เกิดขึ้น!
+$ kubectl get pods
+NAME          READY   STATUS        RESTARTS   AGE
+kubia-09as0   1/1     Running       0          1d
+kubia-zxzij   1/1     Terminating   0          1d</code></pre>
+                    <button class="copy-btn" aria-label="คัดลอกลำดับคำสั่ง">คัดลอก</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // --- Utility Functions (ฟังก์ชันตัวช่วย) ---
+
+        /**
+         * คัดลอกข้อความไปยัง Clipboard
+         * @param {string} text - ข้อความที่ต้องการคัดลอก
+         */
+        const copyToClipboard = (text) => {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed"; 
+            textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+            } catch (err) {
+                console.error('ไม่สามารถคัดลอกได้', err);
+            }
+            document.body.removeChild(textArea);
+        };
+
+        // --- Renderer & Animation Functions (ฟังก์ชันวาดและเคลื่อนไหว) ---
+        
+        /**
+         * วาดและสร้าง Animation ของ ReplicationController Loop
+         * @param {HTMLCanvasElement} canvas - Element ของ canvas
+         */
+        const animateReplicationLoop = (canvas) => {
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            let startTime = null;
+            const duration = 5000; // 5 วินาทีต่อ 1 loop
+
+            const drawBox = (x, y, text, color) => {
+                ctx.fillStyle = color.fill;
+                ctx.strokeStyle = color.stroke;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(x, y, 120, 60, [8]);
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = color.text;
+                ctx.font = 'bold 14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, x + 60, y + 30);
+            };
+
+            const animate = (timestamp) => {
+                if (!startTime) startTime = timestamp;
+                const elapsed = (timestamp - startTime) % duration;
+                const progress = elapsed / duration; // 0 to 1
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // --- วาด Controller (อยู่กับที่) ---
+                drawBox(50, 45, 'Controller', { fill: '#ede9fe', stroke: '#7c3aed', text: '#5b21b6' });
+
+                // --- Logic การเคลื่อนไหว ---
+                // Phase 1: Pod is running (0% -> 40%)
+                // Phase 2: Pod is terminating (40% -> 70%)
+                // Phase 3: New Pod is being created (70% -> 100%)
+                
+                if (progress < 0.7) { // Pod เก่ากำลังทำงานหรือกำลังถูกลบ
+                    let alpha = 1;
+                    let podText = 'Pod (Old)';
+                    let fillColor = '#dcfce7';
+                    let strokeColor = '#16a34a';
+                    let textColor = '#14532d';
+
+                    if (progress > 0.4) { // ช่วงกำลังลบ
+                        const terminationProgress = (progress - 0.4) / 0.3;
+                        alpha = 1 - terminationProgress;
+                        podText = 'Terminating...';
+                        fillColor = '#fee2e2';
+                        strokeColor = '#ef4444';
+                        textColor = '#991b1b';
+                    }
+                    ctx.globalAlpha = alpha;
+                    drawBox(330, 45, podText, { fill: fillColor, stroke: strokeColor, text: textColor });
+                    ctx.globalAlpha = 1;
+                }
+                
+                if (progress > 0.7) { // ช่วงกำลังสร้างใหม่
+                    const creationProgress = (progress - 0.7) / 0.3;
+                    ctx.globalAlpha = creationProgress;
+                    drawBox(330, 45, 'Pod (New)', { fill: '#dcfce7', stroke: '#16a34a', text: '#14532d' });
+                    ctx.globalAlpha = 1;
+                }
+
+                // --- วาดลูกศร Action ---
+                ctx.fillStyle = '#4a5568';
+                ctx.font = '12px sans-serif';
+                if (progress > 0.4 && progress < 0.7) {
+                    ctx.fillText('Delete Command!', 240, 30);
+                } else if (progress > 0.7) {
+                    ctx.fillText('Recreating Pod...', 240, 30);
+                } else {
+                    ctx.fillText('Watching...', 240, 30);
+                }
+
+
+                requestAnimationFrame(animate);
+            };
+
+            requestAnimationFrame(animate);
+        };
+
+        // --- Event Listener Setup ---
+
+        /**
+         * ติดตั้ง Event Listener ทั้งหมดเมื่อ DOM โหลดเสร็จ
+         */
+        const setupEventListeners = () => {
+            const copyButton = document.querySelector('.copy-btn');
+            if (copyButton) {
+                copyButton.addEventListener('click', (e) => {
+                    const wrapper = e.target.closest('.code-block-wrapper');
+                    const codeElement = wrapper.querySelector('code');
+                    copyToClipboard(codeElement.innerText);
+
+                    e.target.textContent = 'คัดลอกแล้ว!';
+                    e.target.classList.add('copied');
+                    setTimeout(() => {
+                        e.target.textContent = 'คัดลอก';
+                        e.target.classList.remove('copied');
+                    }, 2000);
+                });
+            }
+        };
+
+        // --- Main Execution (เริ่มการทำงาน) ---
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            const canvas = document.getElementById('replication-loop-canvas');
+            if (canvas instanceof HTMLCanvasElement) {
+                 if (!CanvasRenderingContext2D.prototype.roundRect) {
+                    console.warn('เบราว์เซอร์นี้ไม่รองรับ roundRect บน canvas');
+                }
+                animateReplicationLoop(canvas);
+            }
+        });
+    </script>
+</body>
+</html>
